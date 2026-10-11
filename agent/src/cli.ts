@@ -18,8 +18,9 @@
  *   patch <commit> <reason>
  *   amend-laws <reason>            bootstrap only: bring the repository's current laws.json into force now (Article 3)
  *
- * Environment: NOMICON_REPO_ROOT, NOMICON_LEDGER_KEY (pkcs8 pem or path), GITHUB_TOKEN,
- * GITHUB_OWNER, GITHUB_REPO, NOMICON_NETWORK (eip155:8453 | eip155:84532), BASE_RPC_URL,
+ * Environment: NOMICON_REPO_ROOT, NOMICON_LEDGER_KEY (pkcs8 pem or path),
+ * GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY (pem or path) [+ GITHUB_APP_INSTALLATION_ID] for the agent's own
+ * GitHub App identity, or GITHUB_TOKEN for local testing; GITHUB_OWNER, GITHUB_REPO, NOMICON_NETWORK (eip155:8453 | eip155:84532), BASE_RPC_URL,
  * ANCHOR_PRIVATE_KEY, X402_FACILITATOR_URL, NOMICON_PUBLIC_URL, NOMICON_PORT, ANTHROPIC_API_KEY,
  * NOMICON_OWNER_ACCOUNTS (comma-separated numeric ids), NOMICON_AGENT_ACCOUNT, NOMICON_FEE_DESTINATION,
  * NOMICON_DOORBELL_ISSUE (issue number accounts comment on to register a doorbell; unset disables),
@@ -35,6 +36,7 @@ import { Ledger, Signer } from "./ledger.js";
 import { replayFromFiles } from "./replay.js";
 import { Runtime } from "./runtime.js";
 import { FileDoorbellStore, GitHubAdapter, HttpDoorbell } from "./adapters/github.js";
+import { octokitFor, parseGitHubAuthEnv, type GitHubIdentity } from "./adapters/auth.js";
 import { Notifier } from "./notifier.js";
 import { BaseChainAdapter } from "./adapters/chain.js";
 import { ClaudeScreen } from "./screen.js";
@@ -56,6 +58,12 @@ function signer(): Signer {
   return new Signer(pem);
 }
 function ledger(): Ledger { return new Ledger(resolve(root(), "ledger/events.jsonl"), signer()); }
+
+async function githubFromEnv(): Promise<{ github: GitHubAdapter; identity: GitHubIdentity }> {
+  const owner = env("GITHUB_OWNER"), repo = env("GITHUB_REPO");
+  const { octokit, identity } = await octokitFor(parseGitHubAuthEnv(process.env), owner, repo);
+  return { github: new GitHubAdapter(owner, repo, octokit), identity };
+}
 
 function ownerCommand(type: Parameters<Ledger["append"]>[1], fields: Record<string, unknown>): void {
   const l = ledger();
@@ -82,7 +90,7 @@ async function main(argv: string[]): Promise<void> {
         head, laws_hash: hash,
         owner_accounts: env("NOMICON_OWNER_ACCOUNTS").split(",").map(Number),
         owner_keys: [signer().publicKeyPem()],
-        agent_account: Number(env("NOMICON_AGENT_ACCOUNT")),
+        agent_account: process.env["NOMICON_AGENT_ACCOUNT"] ? Number(process.env["NOMICON_AGENT_ACCOUNT"]) : (await githubFromEnv()).identity.id,
         fee_destination: env("NOMICON_FEE_DESTINATION"),
         network: env("NOMICON_NETWORK"),
       });
@@ -135,12 +143,16 @@ async function main(argv: string[]): Promise<void> {
 
 async function run(): Promise<void> {
   const network = env("NOMICON_NETWORK", "eip155:84532") as "eip155:8453" | "eip155:84532";
-  const github = new GitHubAdapter(env("GITHUB_OWNER"), env("GITHUB_REPO"), env("GITHUB_TOKEN"));
+  const { github, identity } = await githubFromEnv();
+  const led = ledger();
+  const genesis = led.events.find((e) => e.type === "genesis");
+  const agentAccount = genesis ? Number(genesis["agent_account"]) : null;
+  if (agentAccount !== null && agentAccount !== identity.id) throw new Error(`GitHub identity ${identity.login} (${identity.id}) is not the agent account ${agentAccount} named at genesis; quotes would come from the wrong account`);
+  console.log(new Date().toISOString(), `github identity: ${identity.login} (${identity.id})`);
   const anchorKey = process.env["ANCHOR_PRIVATE_KEY"] as `0x${string}` | undefined;
   const chain = new BaseChainAdapter(network, env("BASE_RPC_URL"), anchorKey);
   const oracle: PriceOracle = { usdcToCad: async () => env("NOMICON_USDC_CAD", "1.37") };
   const publicBaseUrl = env("NOMICON_PUBLIC_URL");
-  const led = ledger();
   const log = (m: string) => console.log(new Date().toISOString(), m);
   const doorbellIssue = process.env["NOMICON_DOORBELL_ISSUE"] ? Number(process.env["NOMICON_DOORBELL_ISSUE"]) : null;
   const dataDir = env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private"));

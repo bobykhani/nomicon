@@ -29,8 +29,9 @@ export function bytesChangedByFile(diff: string): Map<string, number> {
 
 export class GitHubAdapter implements GitHubPort {
   private octokit: Octokit;
-  constructor(private owner: string, private repo: string, auth: string, private ledgerBranch = "main") {
-    this.octokit = new Octokit({ auth });
+  /** `auth` is a personal token, or an Octokit already authenticated (see adapters/auth.ts for App auth). */
+  constructor(private owner: string, private repo: string, auth: string | Octokit, private ledgerBranch = "main") {
+    this.octokit = typeof auth === "string" ? new Octokit({ auth }) : auth;
   }
 
   private toInfo(p: { number: number; title: string; body: string | null; head: { sha: string }; base: { sha: string }; user: { id: number; login: string } | null; state: string; draft?: boolean; merged?: boolean | null; created_at: string }): PullInfo {
