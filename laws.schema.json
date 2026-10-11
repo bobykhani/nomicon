@@ -105,8 +105,8 @@
     },
     "bootstrap": {
       "type": "object",
-      "required": ["owner_action_deadline_days"],
-      "properties": { "owner_action_deadline_days": { "type": "integer", "minimum": 1 } }
+      "required": ["owner_action_deadline_days", "close_immediately_without_voters"],
+      "properties": { "owner_action_deadline_days": { "type": "integer", "minimum": 1 }, "close_immediately_without_voters": { "type": "boolean" } }
     },
     "screening": {
       "type": "object",

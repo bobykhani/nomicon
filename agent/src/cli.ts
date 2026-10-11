@@ -16,6 +16,7 @@
  *   end-bootstrap <reason>
  *   deploy <commit> <reason>
  *   patch <commit> <reason>
+ *   amend-laws <reason>            bootstrap only: bring the repository's current laws.json into force now (Article 3)
  *
  * Environment: NOMICON_REPO_ROOT, NOMICON_LEDGER_KEY (pkcs8 pem or path), GITHUB_TOKEN,
  * GITHUB_OWNER, GITHUB_REPO, NOMICON_NETWORK (eip155:8453 | eip155:84532), BASE_RPC_URL,
@@ -23,6 +24,7 @@
  * NOMICON_OWNER_ACCOUNTS (comma-separated numeric ids), NOMICON_AGENT_ACCOUNT, NOMICON_FEE_DESTINATION.
  */
 import { generateKeyPairSync } from "node:crypto";
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Ledger, Signer } from "./ledger.js";
@@ -108,9 +110,20 @@ async function main(argv: string[]): Promise<void> {
     case "end-bootstrap": ownerCommand("declare", { what: "bootstrap_end", reason: args.join(" ") }); return;
     case "deploy": ownerCommand("deploy", { commit: args[0], reason: args.slice(1).join(" ") }); return;
     case "patch": ownerCommand("patch", { commit: args[0], reason: args.slice(1).join(" ") }); return;
+    case "amend-laws": {
+      const l = ledger();
+      if (l.events.some((e) => e.type === "declare" && e["what"] === "bootstrap_end")) throw new Error("bootstrap has ended; the Laws change only by the Laws procedure");
+      const { hash, raw } = loadLaws(root());
+      const rawSchema = readFileSync(resolve(root(), "laws.schema.json"), "utf8");
+      let head = process.env["NOMICON_HEAD_COMMIT"] || "";
+      try { head = execSync("git rev-parse HEAD", { cwd: root(), encoding: "utf8" }).trim(); } catch { /* keep env value */ }
+      const e = l.append(now(), "laws_snapshot", { pr: null, laws_hash: hash, laws_raw: raw, schema_raw: rawSchema, effective_at: now(), merge_commit: head, amended_by_owner: true, reason: args.join(" "), by: env("NOMICON_OWNER_ACCOUNTS").split(",")[0]! });
+      console.log(`laws ${hash.slice(0, 12)} in force now as event ${e.id} (owner amendment during bootstrap)`);
+      return;
+    }
     case "run": return run();
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|maintenance|end-bootstrap|deploy|patch>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|maintenance|end-bootstrap|deploy|patch|amend-laws>");
       process.exitCode = 1;
   }
 }

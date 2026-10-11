@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 2,
+  "version": 3,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -49,7 +49,10 @@
     "target_capacity_fraction": 0.8,
     "target_lookback_days": 7,
     "target_votes_per_contribution": 3,
-    "layer_multiplier": { "world": 1, "laws": 10 },
+    "layer_multiplier": {
+      "world": 1,
+      "laws": 10
+    },
     "concurrency_base": 2,
     "size_free_kb": 8,
     "size_per_kb_usdc": 0.05,
@@ -72,12 +75,21 @@
   },
   "content": {
     "world_text_only": true,
-    "world_allowed_extensions": [".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".toml"],
+    "world_allowed_extensions": [
+      ".md",
+      ".txt",
+      ".json",
+      ".yaml",
+      ".yml",
+      ".csv",
+      ".toml"
+    ],
     "max_file_kb": 256,
     "max_contribution_kb": 1024
   },
   "bootstrap": {
-    "owner_action_deadline_days": 30
+    "owner_action_deadline_days": 30,
+    "close_immediately_without_voters": true
   },
   "screening": {
     "runs_before_quote": true,

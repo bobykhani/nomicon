@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 2, 10 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 3, 11 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -75,7 +75,7 @@ At intake the agent rejects: changes that touch no file; changes that touch any 
 
 ## Law 9. Bootstrap behaviour
 
-During bootstrap a paid, screened contribution merges only when the owner confirms it, whether or not its vote reached quorum or passed, and the owner may reject any contribution. A confirmed contribution mints weight under Law 4. A contribution the owner has not acted on within 30 days of its window closing is treated as expired. Confirmations and rejections are recorded with reasons. Everything else in these Laws runs normally.
+During bootstrap a paid, screened contribution merges only when the owner confirms it, whether or not its vote reached quorum or passed, and the owner may reject any contribution. A confirmed contribution mints weight under Law 4. While no account at all is qualified to vote, a vote closes the moment it opens and goes straight to the owner, so that the first contributors need not wait out an empty window. A contribution the owner has not acted on within 30 days of its window closing is treated as expired. Confirmations and rejections are recorded with reasons. Everything else in these Laws runs normally.
 
 ## Law 10. Screening
 

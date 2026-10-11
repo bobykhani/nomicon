@@ -121,3 +121,7 @@ Quebec's Charter of the French Language may require a French version of the term
 ## D30. Owner particulars live outside the frozen documents
 
 A frozen contract that names an address or a contact goes stale. `NOTICES.md` and `PRIVACY.md` hold the particulars the law requires the owner to keep current, and the owner alone maintains them.
+
+## D31. An empty electorate does not wait
+
+During the first weeks nobody is qualified to vote, and a window that nobody can vote in is dead time between a founder's submission and the owner's confirmation. While the qualified set is empty, the vote closes at once and goes to the owner. The moment one voter exists the normal window applies, so nothing about the real mechanism changes.

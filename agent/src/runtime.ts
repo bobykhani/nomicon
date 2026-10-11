@@ -113,6 +113,8 @@ export class Runtime {
   }
 
   async tick(): Promise<void> {
+    const added = this.d.ledger.reload();
+    if (added) this.log(`${added} ledger event(s) appended by another process`);
     const laws = await this.refreshLaws();
     const now = this.d.clock.now();
     if (!this.events.some((e) => e.type === "genesis")) { this.log("no genesis event; run `nomicon genesis` first"); return; }
@@ -218,7 +220,8 @@ export class Runtime {
     const qualified = Object.entries(state.weights).filter(([id, w]) => w.mature_micro > 0n && !authors.has(Number(id))).map(([id]) => Number(id)).sort((a, b) => a - b);
     const layer = quote["layer"] as "world" | "laws";
     const proc = layer === "laws" ? laws.vote.laws : laws.vote.world;
-    const closes = now + proc.window_hours * 3600;
+    const immediate = state.bootstrap.active && qualified.length === 0 && laws.bootstrap.close_immediately_without_voters;
+    const closes = immediate ? now : now + proc.window_hours * 3600;
     this.d.ledger.append(now, "vote_open", {
       pr: pr.number, head: pr.headSha, layer, opened: now, closes, laws_hash: this.laws!.hash,
       qualified, authors: [...authors].sort((a, b) => a - b), weighted_accounts: state.weighted_accounts,
@@ -230,8 +233,6 @@ export class Runtime {
     if (pr.headSha !== String(open["head"]) || pr.draft) { await this.withdraw(pr.number, laws, now, pr.draft ? "converted to draft" : "pushed after the vote opened", quote); return; }
     const closesAt = Number(open["closes"]);
     if (now < closesAt) return;
-    const block = await this.d.chain.firstFinalizedBlockAfter(closesAt);
-    if (!block) return; // wait for finality
     const reviews = await this.d.github.listReviews(pr.number);
     const qualified = new Set((open["qualified"] as number[]) ?? []);
     const authors = new Set((open["authors"] as number[]) ?? []);
@@ -240,19 +241,29 @@ export class Runtime {
     const atClose = fold(this.events, closesAt, lawsAtOpen);
     const matureAtClose = new Map<number, bigint>();
     for (const [id, w] of Object.entries(atClose.weights)) matureAtClose.set(Number(id), w.mature_micro);
-    const result = tally({
+    const base = {
       layer: open["layer"] as "world" | "laws", openedAt: Number(open["opened"]), closesAt, qualified, authors, reviews,
-      matureAtClose, weightedAccountsAtOpen: Number(open["weighted_accounts"]), headSha: String(open["head"]), tieBlockHash: block.hash,
-    }, lawsAtOpen);
+      matureAtClose, weightedAccountsAtOpen: Number(open["weighted_accounts"]), headSha: String(open["head"]),
+    };
+    // Law 11: the tie-break block is needed only on an exact tie; fetch it lazily so ordinary closes do not wait for finality.
+    let block: { hash: string } | null = null;
+    let result;
+    try { result = tally(base, lawsAtOpen); }
+    catch (e) {
+      if (!(e instanceof Error) || !e.message.includes("tie")) throw e;
+      block = await this.d.chain.firstFinalizedBlockAfter(closesAt);
+      if (!block) return; // wait for finality
+      result = tally({ ...base, tieBlockHash: block.hash }, lawsAtOpen);
+    }
     // Article 3: during bootstrap every closed vote waits for the owner, whatever the tally says.
     const bootstrap = state.bootstrap.active;
     const recorded = bootstrap ? "await_owner" : result.result;
     this.d.ledger.append(now, "vote_close", {
       pr: pr.number, yes_voters: result.yesVoters, quorum: result.quorum, yes_micro: result.yesMicro, no_micro: result.noMicro,
-      tie_block: result.tie ? block.hash : null, tie_bit: result.tie ? result.tieBit : null, tally_result: result.result, result: recorded, bootstrap,
+      tie_block: result.tie && block ? block.hash : null, tie_bit: result.tie ? result.tieBit : null, tally_result: result.result, result: recorded, bootstrap,
       votes: result.votes.map((v) => ({ account: v.account, yes: v.yes, weight_micro: v.weightMicro })),
     });
-    const summary = `Tally: ${result.result}. Yes voters ${result.yesVoters} of quorum ${result.quorum}. Yes weight ${micro(result.yesMicro)}, no weight ${micro(result.noMicro)}${result.tie ? `, tie broken by block ${block.hash} bit ${result.tieBit}` : ""}.`;
+    const summary = `Tally: ${result.result}. Yes voters ${result.yesVoters} of quorum ${result.quorum}. Yes weight ${micro(result.yesMicro)}, no weight ${micro(result.noMicro)}${result.tie && block ? `, tie broken by block ${block.hash} bit ${result.tieBit}` : ""}.`;
     if (recorded === "await_owner") { await this.d.github.comment(pr.number, summary + " Bootstrap is active: this merges only when the owner confirms, and the owner may reject."); return; }
     if (recorded === "merge") { await this.doMerge(pr.number, String(open["head"]), quote, laws, now, pr.author, summary); return; }
     if (recorded === "reject") { await this.d.github.comment(pr.number, summary + " The fee is forfeit (Law 5)."); await this.d.github.close(pr.number); return; }

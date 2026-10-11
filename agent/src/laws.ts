@@ -81,7 +81,7 @@ export interface Laws {
     max_file_kb: number;
     max_contribution_kb: number;
   };
-  bootstrap: { owner_action_deadline_days: number };
+  bootstrap: { owner_action_deadline_days: number; close_immediately_without_voters: boolean };
   screening: {
     runs_before_quote: true;
     can_block: true;

@@ -27,6 +27,8 @@ const windowOf = (s: Sim, pr: FakePull) => { const o = openOf(s, pr); return o ?
 export const scenarios: Scenario[] = [
   sc("honest-flow", "Five founders are seeded during bootstrap. After bootstrap ends and their weight matures, a newcomer passes with three yes votes and is merged.", async (s) => {
     await s.seedFounders([H1, H2, H3, H4, H5]);
+    const first = s.events.find((e) => e.type === "vote_open")!;
+    s.check("with nobody qualified to vote, the first founder's vote closed the moment it opened (Law 9)", Number(first["closes"]) === Number(first["opened"]));
     s.check("five founders hold mature weight after 31 days", s.state().weighted_accounts === 5, String(s.state().weighted_accounts));
     const pr = await s.submitAndVote(N, { "world/n.md": "hello" }, [yes(H1), yes(H2), yes(H3)]);
     s.check("newcomer merged", merged(s, pr));
