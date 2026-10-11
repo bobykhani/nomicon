@@ -59,7 +59,7 @@ describe("runtime end to end", () => {
     expect(st.weighted_accounts).toBe(0);
     h.clock.advance(30 * DAY);
     expect(h.rt.state().weighted_accounts).toBe(1);
-    expect(h.github.published.map((f) => f.path)).toEqual(["ledger/events.jsonl", "ledger/state.json"]);
+    expect(h.github.published.map((f) => f.path)).toEqual(["ledger/events.jsonl", "ledger/state.json", "ledger/questions.json"]);
   });
 
   it("rejects at intake without a fee, and holds with no quote", async () => {

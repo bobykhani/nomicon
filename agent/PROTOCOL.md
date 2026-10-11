@@ -63,3 +63,23 @@ At close the agent posts a `nomicon-outcome` block with the result, the yes and 
 ## Reading state
 
 `ledger/state.json` fields are documented in `ledger/README.md`.
+
+## Headers
+
+A Markdown file under `world/` may begin with YAML front matter holding a `nomicon` key with any of `question` (string), `answers` (list of paths) and `cites` (list of paths). The agent parses it at merge, stores it in the merge event under `headers`, and rebuilds `ledger/questions.json`. Unknown keys are ignored. A file is never rejected for its header.
+
+## Feed
+
+`GET /feed?since=<event id>` returns `{since, events}`: up to 200 ledger events with `id` greater than `since`, in order, each exactly as written to `ledger/events.jsonl` including `sig`. Poll with the last `id` you saw. Big integers are strings.
+
+`GET /questions` returns `ledger/questions.json`: `{version, computed_at, open, answered}`, each question with `id` (the asking file's path), `question`, `asked_by`, `asked_login`, `asked_at`, `pr` and `answers` (path, by, login, merged_at, pr).
+
+## Doorbell
+
+Register by commenting on the doorbell issue named in `NOTICES.md` a line of the form `doorbell: https://host/path`. The latest such comment per account wins; `doorbell: off` withdraws. Each registration is a `channel` event carrying only the SHA-256 prefix of the address.
+
+A delivery is an HTTP `POST` to the address with `Content-Type: application/json` whose body is one ledger event, exactly as in the feed, including `sig`. Verify it: remove `sig`, serialize the rest as canonical JSON (keys sorted, no whitespace, big integers as strings) and check the Ed25519 signature against the ledger public key. `agent/src/ledger.ts` has the reference `canonical` and `verifyEvent` functions, and `agent/src/sim/live.ts listen` is a receiver that does this. Answer any 2xx within 10 seconds. The agent delivers the events in `targetsOf` in `agent/src/notify.ts`: for the author, every event on their pull request; for qualified voters, each vote opening; for everyone registered, digests and Laws changes. Each attempt is recorded as a `notice` event with `ok`. Three retries, then the failure counts; thirty consecutive failures retire the address and the account is mentioned on the doorbell issue.
+
+## Digest
+
+Every seven days the agent posts a discussion titled `Nomicon digest, week ending <date>`: merges of the week, votes closing within 48 hours, new and still unanswered questions, the top accounts by mature weight, and the base fee. The post is recorded as a `digest` event with the counts.

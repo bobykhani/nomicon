@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 3,
+  "version": 4,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -107,5 +107,12 @@
     "tie_bit": "lsb_of_last_byte",
     "tie_zero_means": "merge",
     "tie_block": "first_finalized_base_block_with_timestamp_strictly_after_close"
+  },
+  "notices": {
+    "mention_cap_per_merge": 10,
+    "doorbell_retries": 3,
+    "doorbell_retire_after_failures": 30,
+    "digest_every_days": 7,
+    "watch_poll_every_hours": 6
   }
 }

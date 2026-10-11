@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nomicon leaderboard</title>
+<style>
+  :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+  body { max-width: 56rem; margin: 2rem auto; padding: 0 1rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0 2rem; }
+  th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  small { opacity: .7; }
+  .err { color: #b00; }
+</style>
+<h1>Nomicon</h1>
+<p id="meta"><small>Loading <code>ledger/state.json</code> and <code>ledger/questions.json</code>. Serve the repository root over HTTP; opening this file directly does not work.</small></p>
+<h2>Weight</h2>
+<p><small>Mature weight by account, in USDC, as of the ledger head. Weight is capped at 20 percent of the total in any tally and decays with a 180-day half-life. Nothing here is a ranking of merit; it is who paid to publish and was voted in.</small></p>
+<table id="weights"><thead><tr><th>#</th><th>account</th><th class="n">mature</th><th class="n">maturing</th><th class="n">share</th></tr></thead><tbody></tbody></table>
+<h2>Open questions</h2>
+<p><small>Asked by a merged file's header and not yet answered. Answer one by merging a file whose header lists its path under <code>answers</code>.</small></p>
+<table id="open"><thead><tr><th>question</th><th>asked by</th><th class="n">days open</th></tr></thead><tbody></tbody></table>
+<h2>Answered</h2>
+<table id="answered"><thead><tr><th>question</th><th>answers</th></tr></thead><tbody></tbody></table>
+<h2>Open votes</h2>
+<table id="votes"><thead><tr><th>pull request</th><th>layer</th><th>closes</th></tr></thead><tbody></tbody></table>
+<script>
+(async () => {
+  const meta = document.getElementById("meta");
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const usdc = (micro) => (Number(BigInt(micro)) / 1e6).toFixed(2);
+  const when = (s) => new Date(Number(s) * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+  try {
+    const [state, questions] = await Promise.all([
+      fetch("../ledger/state.json").then((r) => r.json()),
+      fetch("../ledger/questions.json").then((r) => (r.ok ? r.json() : { open: [], answered: [] })),
+    ]);
+    const now = Math.floor(Date.now() / 1000);
+    meta.innerHTML = `<small>Ledger head ${esc(state.head_event)}, computed ${state.computed_at ? when(state.computed_at) : "never"}. Base fee ${usdc(state.fee.base_micro)} USDC. ${state.bootstrap.active ? "Bootstrap is active: every merge needs the owner's confirmation." : ""}</small>`;
+    const rows = Object.entries(state.weights).map(([id, w]) => ({ id, login: w.login, mature: BigInt(w.mature_micro), immature: BigInt(w.immature_micro ?? 0) })).sort((a, b) => (a.mature < b.mature ? 1 : a.mature > b.mature ? -1 : 0));
+    const total = rows.reduce((a, r) => a + r.mature, 0n);
+    document.querySelector("#weights tbody").innerHTML = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.login)} <small>${esc(r.id)}</small></td><td class="n">${usdc(r.mature)}</td><td class="n">${usdc(r.immature)}</td><td class="n">${total > 0n ? (Number(r.mature * 1000n / total) / 10).toFixed(1) : "0.0"}%</td></tr>`).join("") || `<tr><td colspan="5"><small>Nobody holds weight yet.</small></td></tr>`;
+    document.querySelector("#open tbody").innerHTML = (questions.open ?? []).map((q) => `<tr><td>${esc(q.question)}<br><small><code>${esc(q.id)}</code></small></td><td>${esc(q.asked_login)}</td><td class="n">${Math.floor((now - q.asked_at) / 86400)}</td></tr>`).join("") || `<tr><td colspan="3"><small>No open questions.</small></td></tr>`;
+    document.querySelector("#answered tbody").innerHTML = (questions.answered ?? []).map((q) => `<tr><td>${esc(q.question)}<br><small><code>${esc(q.id)}</code></small></td><td>${q.answers.map((a) => `<code>${esc(a.path)}</code> by ${esc(a.login)}`).join("<br>")}</td></tr>`).join("") || `<tr><td colspan="2"><small>None yet.</small></td></tr>`;
+    document.querySelector("#votes tbody").innerHTML = (state.open_votes ?? []).map((v) => `<tr><td>#${esc(v.pr)}</td><td>${esc(v.layer)}</td><td>${when(v.closes)}</td></tr>`).join("") || `<tr><td colspan="3"><small>No vote is open.</small></td></tr>`;
+  } catch (e) { meta.innerHTML = `<span class="err">Could not load the ledger: ${esc(e.message)}</span>`; }
+})();
+</script>

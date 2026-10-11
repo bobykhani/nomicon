@@ -6,11 +6,17 @@
  *   live pay <pr>                  pay the quoted fee through the agent's x402 endpoint
  *   live review <pr> approve|request
  *   live balance                   payer wallet's USDC balance on the test network
+ *   live doorbell <url|off>        register or withdraw a doorbell on the issue NOMICON_DOORBELL_ISSUE
+ *   live listen <port> [key.pem]   receive doorbell deliveries, verify each signature, print them
+ *   live feed [since]              read the agent's event feed
+ *   live questions                 read the open-questions index
  *
  * Environment: GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, NOMICON_PUBLIC_URL, BASE_RPC_URL,
  * NOMICON_PAYER_KEY (path to a 0x private key file), NOMICON_NETWORK.
  */
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { verifyEvent, type LedgerEvent } from "../ledger.js";
 import { Octokit } from "@octokit/rest";
 import { createPublicClient, erc20Abi, formatUnits, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -69,6 +75,41 @@ async function balance(): Promise<void> {
   console.log(`${account.address}: ${formatUnits(bal, 6)} USDC, ${formatUnits(eth, 18)} ETH on ${network()}`);
 }
 
+async function doorbell(value: string): Promise<void> {
+  const gh = new Octokit({ auth: env("GITHUB_TOKEN") });
+  const issue = Number(env("NOMICON_DOORBELL_ISSUE"));
+  const { data } = await gh.issues.createComment({ owner: owner(), repo: repo(), issue_number: issue, body: `doorbell: ${value}` });
+  console.log(`comment ${data.id} on issue #${issue}: doorbell: ${value}`);
+}
+
+function listen(port: number, keyPath?: string): void {
+  const pub = keyPath ? readFileSync(keyPath, "utf8") : null;
+  createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => {
+      let verdict = "unverified (no key given)";
+      try {
+        const e = JSON.parse(body) as LedgerEvent;
+        if (pub) verdict = verifyEvent(e, pub) ? "signature ok" : "BAD SIGNATURE, ignored";
+        console.log(`${new Date().toISOString()} ${req.method} ${req.url} event ${e.id} ${e.type}${e["pr"] !== undefined ? " pr " + String(e["pr"]) : ""}: ${verdict}`);
+      } catch (err) { console.log(`${new Date().toISOString()} unparseable delivery: ${(err as Error).message}`); }
+      res.writeHead(204); res.end();
+    });
+  }).listen(port, () => console.log(`listening on :${port}; register with: live doorbell https://<public host>:${port}/`));
+}
+
+async function feed(since: number): Promise<void> {
+  const res = await fetch(`${env("NOMICON_PUBLIC_URL").replace(/\/$/, "")}/feed?since=${since}`);
+  const data = (await res.json()) as { events: LedgerEvent[] };
+  for (const e of data.events) console.log(`${e.id}	${new Date(e.at * 1000).toISOString()}	${e.type}${e["pr"] !== undefined ? "	pr " + String(e["pr"]) : ""}`);
+}
+
+async function questions(): Promise<void> {
+  const res = await fetch(`${env("NOMICON_PUBLIC_URL").replace(/\/$/, "")}/questions`);
+  console.log(JSON.stringify(await res.json(), null, 2));
+}
+
 const [cmd, a, b] = process.argv.slice(2);
 const run = async () => {
   switch (cmd) {
@@ -76,7 +117,11 @@ const run = async () => {
     case "pay": return pay(Number(a));
     case "review": return review(Number(a), b ?? "approve");
     case "balance": return balance();
-    default: console.log("usage: live <open-pr [path] [text] | pay <pr> | review <pr> approve|request | balance>"); process.exitCode = 1;
+    case "doorbell": return doorbell(a ?? "off");
+    case "listen": return listen(Number(a ?? "8765"), b);
+    case "feed": return feed(Number(a ?? "0"));
+    case "questions": return questions();
+    default: console.log("usage: live <open-pr [path] [text] | pay <pr> | review <pr> approve|request | balance | doorbell <url|off> | listen <port> [key.pem] | feed [since] | questions>"); process.exitCode = 1;
   }
 };
 run().catch((e) => { console.error(e.message ?? e); process.exit(1); });

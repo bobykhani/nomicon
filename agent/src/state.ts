@@ -5,6 +5,7 @@
 import type { LedgerEvent } from "./ledger.js";
 import type { Laws } from "./laws.js";
 import { weightsAt, type Merge } from "./weight.js";
+import type { Question } from "./questions.js";
 
 export interface HeldFee { account: number; layer: "world" | "laws"; micro: bigint; until: number; pr: number }
 export interface OpenVote { pr: number; head: string; layer: "world" | "laws"; opened: number; closes: number; laws_hash: string; qualified: number[]; authors: number[]; weightedAccountsAtOpen: number }
@@ -29,6 +30,12 @@ export interface State {
   barred_until: Record<string, number>;
   /** Author account of each pull request, learned from its first intake, hold or quote event. */
   pr_account: Record<string, number>;
+  /** Author account of each merged World path (Law 12 citations). */
+  path_author: Record<string, number>;
+  /** Questions asked in merged files, keyed by the asking file's path (Law 12). */
+  questions: Record<string, Question>;
+  /** How each account chose to be reached (Law 12). */
+  channels: Record<string, { doorbell?: "active" | "retired" | "off"; watch?: boolean }>;
 }
 
 export function emptyState(): State {
@@ -37,7 +44,7 @@ export function emptyState(): State {
     bootstrap: { active: false, began: null, ends_by: null },
     fee: { base_micro: 1_000_000n, destination: null, last_adjusted_at: null },
     weights: {}, weighted_accounts: 0, open_votes: [], held_fees: [], deployed_agent: null,
-    merges: [], logins: {}, last_vote_at: {}, owner_accounts: [], agent_account: null, barred_until: {}, pr_account: {},
+    merges: [], logins: {}, last_vote_at: {}, owner_accounts: [], agent_account: null, barred_until: {}, pr_account: {}, path_author: {}, questions: {}, channels: {},
   };
 }
 
@@ -75,9 +82,29 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       break;
     case "merge": {
       const acct = num(e["account"]);
-      s.logins[acct] = String(e["login"] ?? s.logins[acct] ?? "");
+      const login = String(e["login"] ?? s.logins[acct] ?? "");
+      s.logins[acct] = login;
       s.merges.push({ pr: num(e["pr"]), account: acct, mergedAt: e.at, weightMicro: big(e["weight_micro"]) });
       s.held_fees = s.held_fees.filter((h) => !(h.account === acct && h.pr === num(e["pr"])));
+      const paths = (e["paths"] as string[] | undefined) ?? [];
+      const headers = (e["headers"] as Record<string, { question?: string; answers?: string[]; cites?: string[] }> | undefined) ?? {};
+      for (const p of paths) s.path_author[p] = acct;
+      for (const [p, h] of Object.entries(headers)) {
+        if (h.question && !s.questions[p]) s.questions[p] = { id: p, question: h.question, asked_by: acct, asked_login: login, asked_at: e.at, pr: num(e["pr"]), answers: [] };
+        for (const qid of h.answers ?? []) {
+          const q = s.questions[qid];
+          if (q && !q.answers.some((a) => a.path === p)) q.answers.push({ path: p, by: acct, login, merged_at: e.at, pr: num(e["pr"]) });
+        }
+      }
+      break;
+    }
+    case "channel": {
+      const acct = num(e["account"]);
+      const c = s.channels[acct] ?? {};
+      if (e["channel"] === "doorbell") c.doorbell = e["status"] as "active" | "retired" | "off";
+      if (e["channel"] === "watch") c.watch = e["status"] !== "off";
+      s.channels[acct] = c;
+      if (e["login"]) s.logins[acct] = String(e["login"]);
       break;
     }
     case "expiry":

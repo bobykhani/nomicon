@@ -3,7 +3,7 @@
   "title": "Nomicon Laws",
   "description": "Machine-readable values of LAWS.md. LAWS.md is authoritative; this file must match it. Minimums here mirror Constitution Article 9A, which the enforcement agent also enforces directly.",
   "type": "object",
-  "required": ["version", "effective", "vote", "weight", "fee", "submission", "content", "bootstrap", "screening", "determinism"],
+  "required": ["version", "effective", "vote", "weight", "fee", "submission", "content", "bootstrap", "screening", "determinism", "notices"],
   "properties": {
     "version": { "type": "integer", "minimum": 1 },
     "effective": { "type": "string", "format": "date" },
@@ -118,6 +118,17 @@
         "content_is_data_not_instructions": { "const": true },
         "hold_timeout_days": { "type": "integer", "minimum": 1 },
         "floor_rejection_bar_days": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "notices": {
+      "type": "object",
+      "required": ["mention_cap_per_merge", "doorbell_retries", "doorbell_retire_after_failures", "digest_every_days", "watch_poll_every_hours"],
+      "properties": {
+        "mention_cap_per_merge": { "type": "integer", "minimum": 0, "maximum": 50 },
+        "doorbell_retries": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "doorbell_retire_after_failures": { "type": "integer", "minimum": 1 },
+        "digest_every_days": { "type": "integer", "minimum": 1 },
+        "watch_poll_every_hours": { "type": "number", "exclusiveMinimum": 0 }
       }
     },
     "determinism": {

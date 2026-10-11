@@ -14,6 +14,9 @@ import type { ChainPort, Clock, GitHubPort, PaymentNotice, PriceOracle, PullInfo
 import { fold, serializeState, type State } from "./state.js";
 import { tally } from "./tally.js";
 import type { OpenQuote } from "./pay.js";
+import { parseHeader, buildIndex, type Header, type QuestionsIndex } from "./questions.js";
+import { mentionTargets } from "./notify.js";
+import type { Notifier } from "./notifier.js";
 
 export interface RuntimeDeps {
   github: GitHubPort;
@@ -27,6 +30,8 @@ export interface RuntimeDeps {
   termsCommit(): Promise<string>;
   publicBaseUrl: string;
   log?: (msg: string) => void;
+  /** Law 12 duties. Optional so the rules engine can run without them. */
+  notifier?: Notifier;
 }
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -82,6 +87,12 @@ export class Runtime {
     return fold(this.events, now, this.laws.laws);
   }
 
+  /** Ledger events after `since`, for the feed endpoint. */
+  feed(since: number, limit = 200): LedgerEvent[] { return this.events.filter((e) => e.id > since).slice(0, limit); }
+
+  /** Law 12: the open-questions index. */
+  questionsIndex(now = this.d.clock.now()): QuestionsIndex { return buildIndex(this.state(now).questions, now); }
+
   /** Current open quote for the payment endpoint. */
   quoteFor(pr: number): OpenQuote | null {
     const p = phaseOf(pr, this.events);
@@ -126,6 +137,12 @@ export class Runtime {
     await this.applyOwnerDecisions(laws, now, openNumbers);
     // A pull request closed or drafted while its vote was open is a withdrawal (Law 8).
     for (const v of this.state(now).open_votes) if (!openNumbers.has(v.pr)) await this.withdraw(v.pr, laws, now, "closed after the vote opened");
+    if (this.d.notifier) {
+      await this.d.notifier.pollRegistrations(now);
+      await this.d.notifier.pollWatchers(now, laws, this.state(now));
+      await this.d.notifier.maybeDigest(now, laws, this.state(now), this.events);
+      await this.d.notifier.deliver(now, laws, this.state(now), this.events);
+    }
     await this.publish(now);
   }
 
@@ -285,9 +302,31 @@ export class Runtime {
   private async doMerge(pr: number, head: string, quote: LedgerEvent, laws: Laws, now: number, author: { id: number; login: string }, note = ""): Promise<void> {
     const mergeCommit = await this.d.github.merge(pr, head);
     if (!mergeCommit) { await this.expire(pr, quote, laws, now, "could not be merged cleanly at close"); return; }
+    // Law 12: record what was merged and any headers, so questions and citations replay from the ledger alone.
+    const paths: string[] = [];
+    const headers: Record<string, Header> = {};
+    try {
+      const files = await this.d.github.listFiles(pr);
+      for (const f of files) {
+        if (f.status === "removed") continue;
+        paths.push(f.path);
+        if (f.path.startsWith("world/") && f.path.toLowerCase().endsWith(".md")) {
+          const h = parseHeader(await this.d.github.readFile(mergeCommit, f.path));
+          if (h) headers[f.path] = h;
+        }
+      }
+    } catch (e) { this.log(`could not read merged files of pr ${pr}: ${(e as Error).message}`); }
     const weight = BigInt(String(quote["weight_micro"]));
-    this.d.ledger.append(now, "merge", { pr, head, merge_commit: mergeCommit, weight_micro: weight, account: author.id, login: author.login, layer: quote["layer"] });
+    const mergeEvent = this.d.ledger.append(now, "merge", { pr, head, merge_commit: mergeCommit, weight_micro: weight, account: author.id, login: author.login, layer: quote["layer"], paths, headers });
     await this.d.github.comment(pr, (note ? note + " " : "") + `Merged as ${mergeCommit}. Weight ${micro(weight)} USDC accrues to the author and matures in ${laws.weight.maturity_days} days.`);
+    // Law 12: tell the people this contribution answered or built on.
+    const targets = mentionTargets(author.id, headers, this.state(now), laws.notices.mention_cap_per_merge);
+    if (targets.length) {
+      const st = this.state(now);
+      const lines = targets.map((t) => `@${st.logins[t.account] ?? t.account}: this contribution ${t.reason} (${t.about}).`);
+      try { await this.d.github.comment(pr, lines.join("\n")); } catch (e) { this.log(`mention comment failed on pr ${pr}: ${(e as Error).message}`); }
+      for (const t of targets) this.d.ledger.append(now, "notice", { kind: "mention", target: t.account, pr, about: mergeEvent.id, reason: t.reason, ok: true });
+    }
     // Law 3: a change to the Laws takes effect after the delay. Snapshot what was merged.
     if (quote["layer"] === "laws") {
       const [rawLaws, rawSchema] = await Promise.all([this.d.github.readFile(mergeCommit, "laws.json"), this.d.github.readFile(mergeCommit, "laws.schema.json")]);
@@ -395,6 +434,7 @@ export class Runtime {
     await this.d.github.publishLedger([
       { path: "ledger/events.jsonl", content: serialized },
       { path: "ledger/state.json", content: serializeState(state) },
+      { path: "ledger/questions.json", content: JSON.stringify(buildIndex(state.questions, now), null, 2) + "\n" },
     ], `ledger: event ${this.d.ledger.head}`);
     this.lastPublishedHead = head;
   }

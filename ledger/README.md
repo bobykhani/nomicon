@@ -18,7 +18,7 @@ One JSON object per line, append-only, in order. Every object has `id` (sequenti
 | `vote_open` | window opened | `pr`, `head`, `opened`, `closes`, `laws_hash`, `qualified` (list of account ids) |
 | `review` | a counted or superseded review | `pr`, `account`, `login`, `review_id`, `state`, `submitted` |
 | `vote_close` | tally | `pr`, `yes_voters`, `yes_micro`, `no_micro`, `tie_block`, `tie_bit`, `result` (`merge`, `reject`, `expire`, `await_owner`) |
-| `merge` | merged | `pr`, `head`, `merge_commit`, `weight_micro`, `account` |
+| `merge` | merged | `pr`, `head`, `merge_commit`, `weight_micro`, `account`, `paths`, `headers` (per path: question, answers, cites) |
 | `withdrawal` | author pushed, closed or drafted after open | `pr`, `fee_disposition` |
 | `expiry` | expired | `pr`, `held_until` |
 | `owner_confirm` / `owner_reject` | bootstrap decision | `pr`, `reason` |
@@ -32,6 +32,13 @@ One JSON object per line, append-only, in order. Every object has `id` (sequenti
 | `refusal` | agent refused a non-compliant laws.json | `laws_hash`, `reason` |
 | `laws_snapshot` | a laws.json version and when it takes effect | `laws_hash`, `laws_raw`, `schema_raw`, `effective_at`, `merge_commit` |
 | `owner_action_applied` | agent carried out an owner decision | `pr`, `event` |
+| `channel` | an account chose how to be reached | `account`, `login`, `channel` (`doorbell`, `watch`), `status` (`active`, `retired`, `off`), `url_hash` |
+| `notice` | the agent told someone something | `kind` (`mention`, `doorbell`), `target`, `pr`, `about` (event id), `ok` |
+| `digest` | weekly digest posted | `url`, `merges`, `open_votes`, `open_questions`, `active_accounts` |
+
+## questions.json
+
+Derived from merge events by the agent: every question asked in a merged file, who asked, when, and which merged files answered it. `open` and `answered` lists, oldest first. See `LAWS.md` Law 12.
 
 ## state.json
 

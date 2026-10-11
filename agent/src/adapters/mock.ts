@@ -2,7 +2,7 @@
  * In-memory adapters for tests and for the Phase 3 simulation. They model
  * just enough of GitHub and the chain for the rules to be exercised.
  */
-import type { ChainPort, Clock, FinalizedBlock, GitHubPort, PriceOracle, PullCommit, PullInfo, ScreenDecision, ScreenInput, ScreenPort } from "../ports.js";
+import type { ChainPort, Clock, DoorbellPort, DoorbellRecord, DoorbellStore, FinalizedBlock, GitHubPort, IssueComment, PriceOracle, PullCommit, PullInfo, ScreenDecision, ScreenInput, ScreenPort } from "../ports.js";
 import type { ChangedFile } from "../paths.js";
 import type { Review } from "../tally.js";
 import { createHash } from "node:crypto";
@@ -29,6 +29,10 @@ export class FakeGitHub implements GitHubPort {
   get basePaths(): string[] { return Object.keys(this.repoFiles); }
   published: Array<{ path: string; content: string }> = [];
   merges: Array<{ pr: number; head: string }> = [];
+  issueComments: Record<number, IssueComment[]> = {};
+  watchers: Array<{ id: number; login: string }> = [];
+  discussions: Array<{ title: string; body: string }> = [];
+  discussionsEnabled = true;
   private seq = 0;
   constructor(private clock: Clock) {}
 
@@ -61,7 +65,13 @@ export class FakeGitHub implements GitHubPort {
     for (const p of this.pulls.values()) if (p.contents[path] !== undefined) return p.contents[path]!;
     return "";
   }
-  async comment(n: number, body: string): Promise<void> { this.pulls.get(n)!.comments.push(body); }
+  /** Comments on a pull go to it; comments on any other number are issue comments by the agent (account 0). */
+  async comment(n: number, body: string): Promise<void> {
+    const p = this.pulls.get(n);
+    if (p) { p.comments.push(body); return; }
+    const list = (this.issueComments[n] ??= []);
+    list.push({ id: n * 10000 + list.length + 1, account: 0, login: "nomicon-agent", body, createdAt: this.clock.now() });
+  }
   async merge(n: number, headSha: string): Promise<string | null> {
     const p = this.pulls.get(n)!;
     if (p.headSha !== headSha || p.state !== "open") return null;
@@ -72,6 +82,32 @@ export class FakeGitHub implements GitHubPort {
   }
   async close(n: number): Promise<void> { this.pulls.get(n)!.state = "closed"; }
   async publishLedger(files: Array<{ path: string; content: string }>): Promise<void> { this.published = files; }
+  async listIssueComments(issue: number): Promise<IssueComment[]> { return this.issueComments[issue] ?? []; }
+  async listWatchers(): Promise<Array<{ id: number; login: string }>> { return this.watchers; }
+  async postDiscussion(title: string, body: string): Promise<string> {
+    if (!this.discussionsEnabled) throw new Error("discussions are not enabled");
+    this.discussions.push({ title, body }); return `https://sim/discussions/${this.discussions.length}`;
+  }
+  /** Simulate an account posting on the doorbell issue. */
+  commentOnIssue(issue: number, account: { id: number; login: string }, body: string): void {
+    const list = (this.issueComments[issue] ??= []);
+    list.push({ id: issue * 10000 + list.length + 1, account: account.id, login: account.login, body, createdAt: this.clock.now() });
+  }
+}
+
+export class MemoryDoorbellStore implements DoorbellStore {
+  data: { doorbells: Record<string, DoorbellRecord>; lastDelivered: number } = { doorbells: {}, lastDelivered: 0 };
+  load() { return this.data; }
+  save(d: { doorbells: Record<string, DoorbellRecord>; lastDelivered: number }) { this.data = d; }
+}
+
+export class FakeDoorbell implements DoorbellPort {
+  deliveries: Array<{ url: string; body: string }> = [];
+  failing = new Set<string>();
+  async deliver(url: string, body: string): Promise<{ ok: boolean; status: number }> {
+    if (this.failing.has(url)) return { ok: false, status: 500 };
+    this.deliveries.push({ url, body }); return { ok: true, status: 200 };
+  }
 }
 
 export class FakeChain implements ChainPort {

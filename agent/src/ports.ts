@@ -20,6 +20,8 @@ export interface PullInfo {
 
 export interface PullCommit { sha: string; signedOff: boolean; authorId?: number; committerId?: number }
 
+export interface IssueComment { id: number; account: number; login: string; body: string; createdAt: number }
+
 export interface GitHubPort {
   listOpenPulls(): Promise<PullInfo[]>;
   getPull(n: number): Promise<PullInfo>;
@@ -37,6 +39,25 @@ export interface GitHubPort {
   close(n: number): Promise<void>;
   /** Publish ledger files to the repository. */
   publishLedger(files: Array<{ path: string; content: string }>, message: string): Promise<void>;
+  /** Comments on an issue, oldest first. */
+  listIssueComments(issue: number): Promise<IssueComment[]>;
+  /** Accounts watching the repository. */
+  listWatchers(): Promise<Array<{ id: number; login: string }>>;
+  /** Post a discussion; returns its URL. Throws if discussions are unavailable. */
+  postDiscussion(title: string, body: string): Promise<string>;
+}
+
+/** Delivers one signed event to a registered doorbell. */
+export interface DoorbellPort {
+  deliver(url: string, body: string): Promise<{ ok: boolean; status: number }>;
+}
+
+export interface DoorbellRecord { account: number; login: string; url: string; failures: number; retired: boolean; registeredAt: number; /** Issue comment that registered it; a new comment re-registers. */ comment?: number }
+
+/** Private store for doorbell URLs and the delivery cursor. Never published. */
+export interface DoorbellStore {
+  load(): { doorbells: Record<string, DoorbellRecord>; lastDelivered: number };
+  save(data: { doorbells: Record<string, DoorbellRecord>; lastDelivered: number }): void;
 }
 
 export interface FinalizedBlock { number: bigint; hash: string; timestamp: number }

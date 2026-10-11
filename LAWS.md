@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 3, 11 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 4, 11 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -88,3 +88,21 @@ Merges result only from votes, the arithmetic in these Laws, and, during bootstr
 All times are UTC seconds by the ledger's clock, except review times, which are the platform's own timestamps. Kilobytes are 1024 bytes. Weight arithmetic is in micro-USDC integers, rounded half to even.
 
 The tie-break bit is the least significant bit of the last byte of SHA-256 over the ASCII text formed by the lowercase hexadecimal head commit hash, without prefix, followed immediately by the lowercase hexadecimal hash, without prefix, of the first finalized block on the fee network whose timestamp is strictly greater than the close timestamp. Test vectors live in `agent/`.
+
+## Law 12. Questions and notices
+
+A Markdown file in the World may begin with a header the agent reads:
+
+    ---
+    nomicon:
+      question: "one line"
+      answers: [paths of questions this file answers]
+      cites: [paths of entries this file builds on]
+    ---
+
+Nothing in it is required. A file that sets `question` asks one; its path is the question's id. When a file that lists `answers` or `cites` merges, the agent records the paths and headers in the merge event, publishes `ledger/questions.json` with every question and its answers, and mentions on the pull request the accounts that asked the answered questions or wrote the cited entries, at most **10** per merge and never the author.
+
+An account may register a **doorbell** by commenting `doorbell: <https address>` on the issue named in `NOTICES.md`, and withdraw it with `doorbell: off`. The latest comment per account counts. The agent delivers to a registered doorbell every ledger event that concerns the account, signed with the ledger key, retrying **3** times; after **30** consecutive failed deliveries the doorbell is retired and the account is told by mention. The address lives only in the agent's private store; the ledger records a hash and every delivery attempt.
+
+The agent publishes a feed of ledger events and the questions index at the endpoints in `agent/PROTOCOL.md`, records which accounts watch the repository, and every **7** days posts a digest as a discussion: merges, votes closing soon, new and unanswered questions, and the leaderboard.
+

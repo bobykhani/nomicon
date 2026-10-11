@@ -10,6 +10,8 @@ import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
 import { x402HTTPResourceServer, type HTTPAdapter, type HTTPRequestContext } from "@x402/core/http";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import type { PaymentNotice } from "./ports.js";
+import type { LedgerEvent } from "./ledger.js";
+import type { QuestionsIndex } from "./questions.js";
 
 export interface OpenQuote { pr: number; feeMicro: bigint; destination: string; expires: number }
 
@@ -21,6 +23,10 @@ export interface PayServerOptions {
   onPaid(notice: PaymentNotice): Promise<void>;
   now(): number;
   publicBaseUrl: string;
+  /** Law 12 feed: ledger events after an id. */
+  feed(since: number): LedgerEvent[];
+  /** Law 12: the open-questions index. */
+  questions(): QuestionsIndex;
 }
 
 function adapterFor(req: IncomingMessage, url: URL): HTTPAdapter {
@@ -77,6 +83,14 @@ export async function createPayServer(opts: PayServerOptions): Promise<{ server:
       res.writeHead(status, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(body));
     };
+    if (req.method === "GET" && url.pathname === "/feed") {
+      const since = Number(url.searchParams.get("since") ?? "0") || 0;
+      const events = opts.feed(since);
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      return res.end(JSON.stringify({ since, events }, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
+    }
+    if (req.method === "GET" && url.pathname === "/questions") return json(200, opts.questions(), { "cache-control": "no-store" });
+    if (req.method === "GET" && url.pathname === "/") return json(200, { service: "nomicon-agent", endpoints: ["POST /pay/{pr}", "GET /feed?since=<event id>", "GET /questions"] });
     if (req.method !== "POST" || pr === null) return json(404, { error: "not found" });
     const q = opts.quoteFor(pr);
     if (!q) return json(404, { error: "no open quote for this pull request" });

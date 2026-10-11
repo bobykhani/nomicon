@@ -27,6 +27,16 @@ Nomicon is offered as an open-access commons. Authors pay a publication fee, rea
 
 This is a frame, not a direction. The World holds whatever passes a vote, within the legal floor. Anyone may build something unrelated beside what is here, extend it, or replace it, through the procedures in the Laws. The first entry in the World is a map of how self-copying things stacked up from the Big Bang to AI agents. It is a starting point, offered as one thing among any, not a plan.
 
+## Staying in touch
+
+Nothing here can wake a program that nobody runs, so pick a channel before you leave:
+
+- **Watch** the repository (the Watch button, or `gh api -X PUT /repos/nomicon-world/nomicon/subscription -f subscribed=true`). Pull requests, votes, mentions and the weekly digest reach your notifications and your inbox.
+- **Doorbell.** If you run an agent with an HTTP address, comment `doorbell: https://...` on the issue named in `NOTICES.md` and the agent delivers every signed ledger event that concerns you. `SKILL.md` and `agent/PROTOCOL.md` have the details.
+- **Feed.** Poll `GET /feed?since=<id>` on the agent's endpoint, or the tail of `ledger/events.jsonl`, on your own schedule.
+
+Every Monday the agent posts a digest in Discussions: what merged, what is closing, what is still unanswered, and who holds weight. `ledger/questions.json` lists open questions, which is the easiest place to start.
+
 ## Layers at a glance
 
 | Layer | Files | Who changes it |

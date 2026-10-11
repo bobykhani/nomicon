@@ -1,5 +1,7 @@
 import { Octokit } from "@octokit/rest";
-import type { GitHubPort, PullCommit, PullInfo } from "../ports.js";
+import type { DoorbellPort, DoorbellRecord, DoorbellStore, GitHubPort, IssueComment, PullCommit, PullInfo } from "../ports.js";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ChangedFile } from "../paths.js";
 import type { Review } from "../tally.js";
 
@@ -134,5 +136,54 @@ export class GitHubAdapter implements GitHubPort {
       if (sha) params.sha = sha;
       await this.octokit.repos.createOrUpdateFileContents(params);
     }
+  }
+
+  async listIssueComments(issue: number): Promise<IssueComment[]> {
+    const comments = await this.octokit.paginate(this.octokit.issues.listComments, { owner: this.owner, repo: this.repo, issue_number: issue, per_page: 100 });
+    return comments.map((c) => ({ id: c.id, account: c.user?.id ?? 0, login: c.user?.login ?? "", body: c.body ?? "", createdAt: Math.floor(Date.parse(c.created_at) / 1000) }));
+  }
+
+  async listWatchers(): Promise<Array<{ id: number; login: string }>> {
+    const subs = await this.octokit.paginate(this.octokit.activity.listWatchersForRepo, { owner: this.owner, repo: this.repo, per_page: 100 });
+    return subs.map((u) => ({ id: u.id, login: u.login }));
+  }
+
+  async postDiscussion(title: string, body: string): Promise<string> {
+    const q = await this.octokit.graphql<{ repository: { id: string; discussionCategories: { nodes: Array<{ id: string; name: string }> } } }>(
+      `query($owner:String!,$repo:String!){ repository(owner:$owner,name:$repo){ id discussionCategories(first:20){ nodes{ id name } } } }`, { owner: this.owner, repo: this.repo });
+    const cats = q.repository.discussionCategories.nodes;
+    const cat = cats.find((c) => /announce/i.test(c.name)) ?? cats.find((c) => /general/i.test(c.name)) ?? cats[0];
+    if (!cat) throw new Error("repository has no discussion categories; enable Discussions in the repository settings");
+    const m = await this.octokit.graphql<{ createDiscussion: { discussion: { url: string } } }>(
+      `mutation($repo:ID!,$cat:ID!,$title:String!,$body:String!){ createDiscussion(input:{repositoryId:$repo,categoryId:$cat,title:$title,body:$body}){ discussion{ url } } }`,
+      { repo: q.repository.id, cat: cat.id, title, body });
+    return m.createDiscussion.discussion.url;
+  }
+}
+
+/** Doorbell URLs live in a private JSON file, never in the repository. */
+export class FileDoorbellStore implements DoorbellStore {
+  constructor(private path: string) {}
+  load(): { doorbells: Record<string, DoorbellRecord>; lastDelivered: number } {
+    if (!existsSync(this.path)) return { doorbells: {}, lastDelivered: 0 };
+    return JSON.parse(readFileSync(this.path, "utf8"));
+  }
+  save(d: { doorbells: Record<string, DoorbellRecord>; lastDelivered: number }): void {
+    mkdirSync(dirname(this.path), { recursive: true });
+    writeFileSync(this.path, JSON.stringify(d, null, 2), "utf8");
+  }
+}
+
+/** Posts a signed event to a doorbell with a short timeout. */
+export class HttpDoorbell implements DoorbellPort {
+  constructor(private timeoutMs = 10_000) {}
+  async deliver(url: string, body: string): Promise<{ ok: boolean; status: number }> {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "user-agent": "nomicon-agent" }, body, signal: ctl.signal });
+      return { ok: res.ok, status: res.status };
+    } catch { return { ok: false, status: 0 }; }
+    finally { clearTimeout(t); }
   }
 }

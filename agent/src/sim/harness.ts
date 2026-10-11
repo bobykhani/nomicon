@@ -9,7 +9,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Runtime } from "../runtime.js";
 import { Ledger, Signer, type LedgerEvent } from "../ledger.js";
-import { FakeChain, FakeClock, FakeGitHub, FakeScreen, FixedOracle, type FakePull } from "../adapters/mock.js";
+import { FakeChain, FakeClock, FakeDoorbell, FakeGitHub, FakeScreen, FixedOracle, MemoryDoorbellStore, type FakePull } from "../adapters/mock.js";
+import { Notifier } from "../notifier.js";
 import { phaseOf, type Phase } from "../phases.js";
 import { replay } from "../replay.js";
 import { parseLaws } from "../laws.js";
@@ -35,6 +36,9 @@ export class Sim {
   clock = new FakeClock(T0);
   github: FakeGitHub;
   chain: FakeChain;
+  doorbell = new FakeDoorbell();
+  store = new MemoryDoorbellStore();
+  readonly doorbellIssue = 9999;
   ledger: Ledger;
   signer: Signer;
   rt: Runtime;
@@ -50,9 +54,10 @@ export class Sim {
     const { privateKey } = generateKeyPairSync("ed25519");
     this.signer = new Signer(privateKey.export({ type: "pkcs8", format: "pem" }) as string);
     this.ledger = new Ledger(join(mkdtempSync(join(tmpdir(), "nomicon-sim-")), "events.jsonl"), this.signer);
+    const notifier = new Notifier({ github: this.github, doorbell: this.doorbell, store: this.store, ledger: this.ledger, clock: this.clock, log: (m) => this.notes.push("log: " + m), doorbellIssue: this.doorbellIssue });
     this.rt = new Runtime({
       github: this.github, chain: this.chain, screen: new FakeScreen(opts.holdIf), oracle: new FixedOracle(), clock: this.clock, ledger: this.ledger,
-      publicBaseUrl: "https://pay.sim", loadLaws: async () => this.lawsSource, termsCommit: async () => "tt".repeat(20),
+      publicBaseUrl: "https://pay.sim", loadLaws: async () => this.lawsSource, termsCommit: async () => "tt".repeat(20), notifier,
     });
     this.ledger.append(T0, "genesis", { head: "aa".repeat(20), laws_hash: lawsHash, owner_accounts: [OWNER.id], owner_keys: [this.signer.publicKeyPem()], agent_account: 101, fee_destination: "0xdest", network: "eip155:84532" });
     this.ledger.append(T0, "laws_snapshot", { pr: null, laws_hash: lawsHash, laws_raw: rawLaws, schema_raw: rawSchema, effective_at: T0, merge_commit: "aa".repeat(20) });

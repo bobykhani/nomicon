@@ -9,4 +9,6 @@ Legal particulars of the owner. Maintained by the owner alone under `CONSTITUTIO
 - **Privacy contact and accountable individual:** [PRIVACY CONTACT]
 - **Tax registration:** [HST NUMBER, when registered]
 - **Canonical repository:** https://github.com/nomicon-world/nomicon
+- **Doorbell issue (LAWS.md Law 12):** [DOORBELL ISSUE URL, opened at launch]
+- **Agent endpoint (quotes, feed, questions):** [AGENT ENDPOINT URL, published at launch]
 - **Owner accounts on the hosting platform:** listed in the ledger's first event

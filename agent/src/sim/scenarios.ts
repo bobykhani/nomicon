@@ -223,4 +223,71 @@ export const scenarios: Scenario[] = [
     const r = replay(copy, new Map([[lawsHash, rawLaws]]), rawSchema, s.signer.publicKeyPem(), s.clock.now());
     s.check("tampered ledger is detected", !r.ok && r.findings.some((f) => f.event === m.id && f.problem.includes("signature")), r.findings.map((f) => f.problem).join("; "));
   }),
+
+  sc("questions-and-mentions", "A merged file asks a question; a later merged file answers it and cites a third. The index records the question as open then answered, and the agent mentions the asker and the cited author, never the answerer.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const ask = await s.submitAndVote(N, { "world/q/facilitators.md": "---\nnomicon:\n  question: \"Which facilitators settle on Base within a minute?\"\n---\n\n# Facilitators\n" }, [yes(H1), yes(H2), yes(H3)]);
+    s.check("the question is indexed as open after merge", merged(s, ask) && s.rt.questionsIndex().open.some((q) => q.id === "world/q/facilitators.md"));
+    const cited = await s.submitAndVote(M, { "world/notes/base.md": "# Base notes\n" }, [yes(H1), yes(H2), yes(H3)]);
+    s.check("cited entry merged", merged(s, cited));
+    const ans = await s.submitAndVote(H4, { "world/a/facilitators-answer.md": "---\nnomicon:\n  answers: [world/q/facilitators.md]\n  cites: [world/notes/base.md]\n---\n\nx402.org settles in about ten seconds.\n" }, [yes(H1), yes(H2), yes(H3)]);
+    s.check("answer merged", merged(s, ans));
+    const idx = s.rt.questionsIndex();
+    s.check("the question moved from open to answered", !idx.open.some((q) => q.id === "world/q/facilitators.md") && idx.answered.some((q) => q.id === "world/q/facilitators.md" && q.answers[0]?.by === H4.id));
+    const mentions = s.events.filter((e) => e.type === "notice" && e["kind"] === "mention" && e["pr"] === ans.number).map((e) => Number(e["target"])).sort();
+    s.check("asker and cited author were mentioned, the answerer was not", JSON.stringify(mentions) === JSON.stringify([N.id, M.id].sort()), JSON.stringify(mentions));
+    const comment = s.github.pulls.get(ans.number)!.comments.find((c) => c.includes("@newcomer"));
+    s.check("the mention comment names the asker", comment !== undefined);
+  }),
+
+  sc("mention-cap", "A merge citing thirty entries by thirty authors mentions at most ten of them.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const authors = Array.from({ length: 30 }, (_, i) => acct(200 + i, `w${i}`));
+    for (const a of authors) { const pr = await s.submitAndVote(a, { [`world/w/${a.login}.md`]: "x" }, [yes(H1), yes(H2), yes(H3)]); if (!merged(s, pr)) s.check(`${a.login} merged`, false); }
+    const cites = authors.map((a) => `world/w/${a.login}.md`);
+    const big = await s.submitAndVote(N, { "world/w/survey.md": `---\nnomicon:\n  cites: [${cites.join(", ")}]\n---\n\nSurvey.\n` }, [yes(H1), yes(H2), yes(H3)]);
+    const n = s.events.filter((e) => e.type === "notice" && e["kind"] === "mention" && e["pr"] === big.number).length;
+    s.check("exactly ten mentions were sent", merged(s, big) && n === 10, String(n));
+  }),
+
+  sc("doorbell", "An account registers a doorbell by commenting on the doorbell issue. It receives signed deliveries for events that concern it and nothing for events that do not. A dead doorbell is retired after repeated failures and the account is told by mention.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    s.github.commentOnIssue(s.doorbellIssue, N, "doorbell: https://newcomer.example/hook/secret-123");
+    await s.tick();
+    s.check("registration recorded as a channel event with a hash, not the URL", s.events.some((e) => e.type === "channel" && e["account"] === N.id && e["status"] === "active" && typeof e["url_hash"] === "string" && !JSON.stringify(e).includes("secret-123")));
+    const before = s.doorbell.deliveries.length;
+    const pr = await s.submitAndVote(N, { "world/n.md": "x" }, [yes(H1), yes(H2), yes(H3)]);
+    await s.tick();
+    const mine = s.doorbell.deliveries.slice(before).map((d) => JSON.parse(d.body) as { type: string; sig?: string; pr?: number });
+    s.check("the newcomer's doorbell received its quote, vote open, close and merge", ["quote", "vote_open", "vote_close", "merge"].every((t) => mine.some((d) => d.type === t && d.pr === pr.number)), mine.map((d) => d.type).join(","));
+    s.check("every delivery carries the ledger signature", mine.every((d) => typeof d.sig === "string" && d.sig.length > 0));
+    s.check("deliveries were recorded as notices", s.events.some((e) => e.type === "notice" && e["kind"] === "doorbell" && e["target"] === N.id && e["ok"] === true));
+    const other = await s.submitAndVote(M, { "world/m.md": "y" }, [yes(H1), yes(H2), yes(H3)]);
+    const leaked = s.doorbell.deliveries.map((d) => JSON.parse(d.body) as { pr?: number; type: string }).filter((d) => d.pr === other.number && d.type !== "vote_open");
+    s.check("another account's submission was not delivered to the newcomer's doorbell", leaked.length === 0, leaked.map((d) => d.type).join(","));
+    s.doorbell.failing.add("https://newcomer.example/hook/secret-123");
+    for (let i = 0; i < 31; i++) { await s.submit(N, { [`world/n-${i}.md`]: "z" }); }
+    s.check("a doorbell that keeps failing is retired", s.events.some((e) => e.type === "channel" && e["account"] === N.id && e["status"] === "retired"));
+    s.check("the account was told by mention on the doorbell issue", (s.github.issueComments[s.doorbellIssue] ?? []).some((c) => c.account === 0 && c.body.includes("@newcomer")));
+    s.github.commentOnIssue(s.doorbellIssue, N, "doorbell: https://newcomer.example/hook/secret-123");
+    await s.tick();
+    s.check("posting the address again re-registers it", s.events.filter((e) => e.type === "channel" && e["account"] === N.id && e["status"] === "active").length === 2);
+  }),
+
+  sc("digest-and-watchers", "After seven days the agent posts a digest listing the week's merges and open questions, and records who watches the repository.", async (s) => {
+    s.github.watchers.push({ id: H1.id, login: H1.login });
+    await s.seedFounders([H1, H2, H3]);
+    await s.submitAndVote(N, { "world/q/one.md": "---\nnomicon:\n  question: \"What is the cheapest RPC for Base Sepolia?\"\n---\n" }, [yes(H1), yes(H2), yes(H3)]);
+    await s.advance(8 * DAY, DAY);
+    const digests = s.github.discussions;
+    s.check("at least one digest was posted after a week", digests.length >= 1, String(digests.length));
+    const last = digests[digests.length - 1]!;
+    s.check("the digest lists the open question", last.body.includes("cheapest RPC"));
+    s.check("the digest is recorded in the ledger", s.events.some((e) => e.type === "digest"));
+    s.check("the watcher was recorded as a channel", s.events.some((e) => e.type === "channel" && e["channel"] === "watch" && e["account"] === H1.id));
+    const recorded = s.events.filter((e) => e.type === "digest").length;
+    s.github.discussionsEnabled = false;
+    await s.advance(8 * DAY, DAY);
+    s.check("a failed digest post is not recorded and does not stop the agent", s.events.filter((e) => e.type === "digest").length === recorded && s.notes.some((n) => n.includes("digest not posted")) && s.github.merges.length > 0);
+  }),
 ];

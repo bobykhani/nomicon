@@ -21,7 +21,9 @@
  * Environment: NOMICON_REPO_ROOT, NOMICON_LEDGER_KEY (pkcs8 pem or path), GITHUB_TOKEN,
  * GITHUB_OWNER, GITHUB_REPO, NOMICON_NETWORK (eip155:8453 | eip155:84532), BASE_RPC_URL,
  * ANCHOR_PRIVATE_KEY, X402_FACILITATOR_URL, NOMICON_PUBLIC_URL, NOMICON_PORT, ANTHROPIC_API_KEY,
- * NOMICON_OWNER_ACCOUNTS (comma-separated numeric ids), NOMICON_AGENT_ACCOUNT, NOMICON_FEE_DESTINATION.
+ * NOMICON_OWNER_ACCOUNTS (comma-separated numeric ids), NOMICON_AGENT_ACCOUNT, NOMICON_FEE_DESTINATION,
+ * NOMICON_DOORBELL_ISSUE (issue number accounts comment on to register a doorbell; unset disables),
+ * NOMICON_DATA_DIR (private directory for doorbell URLs; default <repo root>/../nomicon-private).
  */
 import { generateKeyPairSync } from "node:crypto";
 import { execSync } from "node:child_process";
@@ -30,7 +32,8 @@ import { resolve } from "node:path";
 import { Ledger, Signer } from "./ledger.js";
 import { replayFromFiles } from "./replay.js";
 import { Runtime } from "./runtime.js";
-import { GitHubAdapter } from "./adapters/github.js";
+import { FileDoorbellStore, GitHubAdapter, HttpDoorbell } from "./adapters/github.js";
+import { Notifier } from "./notifier.js";
 import { BaseChainAdapter } from "./adapters/chain.js";
 import { ClaudeScreen } from "./screen.js";
 import { createPayServer } from "./pay.js";
@@ -135,15 +138,21 @@ async function run(): Promise<void> {
   const chain = new BaseChainAdapter(network, env("BASE_RPC_URL"), anchorKey);
   const oracle: PriceOracle = { usdcToCad: async () => env("NOMICON_USDC_CAD", "1.37") };
   const publicBaseUrl = env("NOMICON_PUBLIC_URL");
+  const led = ledger();
+  const log = (m: string) => console.log(new Date().toISOString(), m);
+  const doorbellIssue = process.env["NOMICON_DOORBELL_ISSUE"] ? Number(process.env["NOMICON_DOORBELL_ISSUE"]) : null;
+  const dataDir = env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private"));
+  const notifier = new Notifier({ github, doorbell: new HttpDoorbell(), store: new FileDoorbellStore(resolve(dataDir, "doorbells.json")), ledger: led, clock: { now }, log, doorbellIssue });
   const rt = new Runtime({
-    github, chain, screen: new ClaudeScreen(), oracle, clock: { now }, ledger: ledger(), publicBaseUrl,
+    github, chain, screen: new ClaudeScreen(), oracle, clock: { now }, ledger: led, publicBaseUrl, notifier,
     loadLaws: async () => ({ rawLaws: await github.readFile("main", "laws.json"), rawSchema: await github.readFile("main", "laws.schema.json") }),
     termsCommit: async () => env("NOMICON_TERMS_COMMIT", "main"),
-    log: (m) => console.log(new Date().toISOString(), m),
+    log,
   });
   const { server } = await createPayServer({
     network, facilitatorUrl: env("X402_FACILITATOR_URL", "https://x402.org/facilitator"),
     quoteFor: (pr) => rt.quoteFor(pr), onPaid: (n) => rt.onPaid(n), now, publicBaseUrl,
+    feed: (since) => rt.feed(since), questions: () => rt.questionsIndex(),
   });
   server.listen(Number(env("NOMICON_PORT", "8402")), () => console.log(`payment endpoint on :${env("NOMICON_PORT", "8402")}`));
   const interval = Number(env("NOMICON_TICK_SECONDS", "60")) * 1000;

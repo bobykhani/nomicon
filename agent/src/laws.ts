@@ -91,6 +91,7 @@ export interface Laws {
     floor_rejection_bar_days: number;
   };
   determinism: Record<string, string | number>;
+  notices: { mention_cap_per_merge: number; doorbell_retries: number; doorbell_retire_after_failures: number; digest_every_days: number; watch_poll_every_hours: number };
 }
 
 export class LawsError extends Error {
@@ -135,6 +136,9 @@ export function sha256Hex(data: string | Buffer): string {
 
 export interface LoadedLaws { laws: Laws; hash: string; raw: string }
 
+/** Law 12 numbers for Laws versions written before the notices section existed (version < 4). */
+export const NOTICE_DEFAULTS: Laws["notices"] = { mention_cap_per_merge: 10, doorbell_retries: 3, doorbell_retire_after_failures: 30, digest_every_days: 7, watch_poll_every_hours: 6 };
+
 /** Validate against laws.schema.json and Article 9A. Throws LawsError if refused. */
 export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
@@ -146,7 +150,9 @@ export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   if (!validate(data)) for (const e of validate.errors ?? []) problems.push(`${e.instancePath || "/"} ${e.message ?? ""}`.trim());
   if (problems.length === 0) problems.push(...article9AProblems(data as Laws));
   if (problems.length) throw new LawsError(problems);
-  return { laws: data as Laws, hash: sha256Hex(rawLaws), raw: rawLaws };
+  const laws = data as Laws;
+  if (!laws.notices) laws.notices = { ...NOTICE_DEFAULTS };
+  return { laws, hash: sha256Hex(rawLaws), raw: rawLaws };
 }
 
 export function loadLaws(repoRoot: string): LoadedLaws {
