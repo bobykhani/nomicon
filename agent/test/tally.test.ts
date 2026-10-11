@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { tally, tieBit, type Review, type TallyInput } from "../src/tally.js";
+import { laws } from "./helpers.js";
+
+const t0 = 1_800_000_000;
+const rv = (account: number, state: Review["state"], at = t0 + 100, reviewId = account * 10 + 1): Review => ({ reviewId, account, login: `u${account}`, state, submittedAt: at });
+
+function base(over: Partial<TallyInput> = {}): TallyInput {
+  return {
+    layer: "world", openedAt: t0, closesAt: t0 + 72 * 3600,
+    qualified: new Set([1, 2, 3, 4, 5]), authors: new Set([9]),
+    reviews: [], matureAtClose: new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n]]),
+    weightedAccountsAtOpen: 5, headSha: "ab".repeat(20), ...over,
+  };
+}
+
+describe("tally", () => {
+  it("expires below three yes voters even with many no votes", () => {
+    const r = tally(base({ reviews: [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "CHANGES_REQUESTED"), rv(4, "CHANGES_REQUESTED")] }), laws);
+    expect(r.result).toBe("expire");
+    expect(r.yesVoters).toBe(2);
+  });
+  it("merges on yes-weight majority with quorum met", () => {
+    const r = tally(base({ reviews: [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED"), rv(4, "CHANGES_REQUESTED")] }), laws);
+    expect(r.result).toBe("merge");
+    expect(r.yesMicro).toBe(30n);
+    expect(r.noMicro).toBe(10n);
+  });
+  it("rejects when no-weight exceeds yes-weight", () => {
+    const r = tally(base({ matureAtClose: new Map([[1, 1n], [2, 1n], [3, 1n], [4, 100n], [5, 100n]]), reviews: [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED"), rv(4, "CHANGES_REQUESTED")] }), laws);
+    expect(r.result).toBe("reject");
+  });
+  it("caps a whale at 20 percent of total mature weight", () => {
+    const r = tally(base({ matureAtClose: new Map([[1, 1n], [2, 1n], [3, 1n], [4, 1n], [5, 1000n]]), reviews: [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED"), rv(4, "APPROVED"), rv(5, "CHANGES_REQUESTED")] }), laws);
+    expect(r.noMicro).toBe(200n);
+    expect(r.result).toBe("reject");
+  });
+  it("ignores comment-only reviews, late reviews, early reviews, authors and unqualified accounts", () => {
+    const r = tally(base({
+      qualified: new Set([1, 2, 3, 9]),
+      reviews: [
+        rv(1, "APPROVED"), rv(2, "APPROVED"),
+        rv(3, "COMMENTED"),
+        rv(4, "APPROVED"),
+        rv(9, "APPROVED"),
+        rv(5, "APPROVED", t0 + 72 * 3600 + 1),
+        rv(2, "CHANGES_REQUESTED", t0 - 1, 99),
+      ],
+    }), laws);
+    expect(r.result).toBe("expire");
+    expect(r.votes.map((v) => v.account)).toEqual([1, 2]);
+  });
+  it("counts only the latest approve or request-changes review per account", () => {
+    const r = tally(base({ reviews: [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED", t0 + 100, 31), rv(3, "CHANGES_REQUESTED", t0 + 200, 32), rv(3, "COMMENTED", t0 + 300, 33)] }), laws);
+    expect(r.yesVoters).toBe(2);
+    expect(r.result).toBe("expire");
+  });
+  it("breaks an exact tie with the block-hash bit", () => {
+    const input = base({
+      qualified: new Set([1, 2, 3, 4, 5, 6]),
+      reviews: [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED"), rv(4, "CHANGES_REQUESTED"), rv(5, "CHANGES_REQUESTED"), rv(6, "CHANGES_REQUESTED")],
+      matureAtClose: new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n], [6, 10n]]),
+      tieBlockHash: "cd".repeat(32),
+    });
+    const r = tally(input, laws);
+    expect(r.tie).toBe(true);
+    expect(r.result).toBe(r.tieBit === 0 ? "merge" : "reject");
+    expect(() => tally({ ...input, tieBlockHash: undefined } as TallyInput, laws)).toThrow();
+  });
+  it("needs two thirds and a larger quorum for the Laws", () => {
+    const yes3no2 = [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED"), rv(4, "CHANGES_REQUESTED"), rv(5, "CHANGES_REQUESTED")];
+    const r = tally(base({ layer: "laws", reviews: yes3no2 }), laws);
+    expect(r.quorum).toBe(5);
+    expect(r.result).toBe("expire");
+    const q = new Set([1, 2, 3, 4, 5, 6, 7]);
+    const m = new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n], [6, 10n], [7, 10n]]);
+    const sixYes = [1, 2, 3, 4, 5, 6].map((a) => rv(a, "APPROVED")).concat([rv(7, "CHANGES_REQUESTED")]);
+    expect(tally(base({ layer: "laws", qualified: q, matureAtClose: m, weightedAccountsAtOpen: 7, reviews: sixYes }), laws).result).toBe("merge");
+    const fiveYes = [1, 2, 3, 4, 5].map((a) => rv(a, "APPROVED")).concat([rv(6, "CHANGES_REQUESTED"), rv(7, "CHANGES_REQUESTED")]);
+    const heavyNo = new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n], [6, 20n], [7, 20n]]);
+    expect(tally(base({ layer: "laws", qualified: q, matureAtClose: heavyNo, weightedAccountsAtOpen: 7, reviews: fiveYes }), laws).result).toBe("reject");
+    expect(tally(base({ layer: "laws", weightedAccountsAtOpen: 40, reviews: [] }), laws).quorum).toBe(8);
+  });
+});
+
+describe("tie bit", () => {
+  it("is the LSB of the last byte of sha256 over the concatenated lowercase hex strings", () => {
+    const head = "A1".repeat(20), block = "0xB2" + "b2".repeat(31);
+    const expected = createHash("sha256").update("a1".repeat(20) + "b2".repeat(32), "ascii").digest();
+    expect(tieBit(head, block)).toBe(expected[31]! & 1);
+  });
+});

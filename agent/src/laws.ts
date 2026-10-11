@@ -1,0 +1,156 @@
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import _Ajv2020 from "ajv/dist/2020.js";
+import _addFormats from "ajv-formats";
+
+// ajv ships CommonJS; under NodeNext the default import is the module namespace.
+const Ajv2020 = ((_Ajv2020 as unknown as { default?: unknown }).default ?? _Ajv2020) as typeof _Ajv2020.default;
+const addFormats = ((_addFormats as unknown as { default?: unknown }).default ?? _addFormats) as typeof _addFormats.default;
+import { ARTICLE_9A, MIN_BASE_FEE_MICRO } from "./constitution.js";
+
+export interface Procedure {
+  window_hours: number;
+  quorum_yes_voters: number;
+  quorum_percent_of_weighted_accounts: number;
+  majority: "simple_weight" | "two_thirds_weight";
+  tie: "random_parity";
+  effect_delay_days?: number;
+}
+
+export interface Laws {
+  version: number;
+  effective: string;
+  vote: {
+    world: Procedure;
+    laws: Procedure & { effect_delay_days: number };
+    mechanism: "github_pull_request_review";
+    yes: "APPROVED";
+    no: "CHANGES_REQUESTED";
+    author_may_vote: false;
+    rules_snapshot_at_open: true;
+  };
+  weight: {
+    source: string;
+    decay_half_life_days: number;
+    inactive_after_days_without_vote: number;
+    inactive_half_life_days: number;
+    maturity_days: number;
+    per_account_cap_percent: number;
+    transferable: false;
+    unit: string;
+  };
+  fee: {
+    asset: "USDC";
+    network: string;
+    network_caip2: string;
+    protocol: string;
+    floor_usdc: number;
+    cap_multiple_of_floor: number;
+    adjust_every_hours: number;
+    lookback_hours: number;
+    rise_step_percent: number;
+    fall_step_percent: number;
+    target_min_per_day: number;
+    target_capacity_fraction: number;
+    target_lookback_days: number;
+    target_votes_per_contribution: number;
+    layer_multiplier: { world: number; laws: number };
+    concurrency_base: number;
+    size_free_kb: number;
+    size_per_kb_usdc: number;
+    quote_valid_hours: number;
+    rejection_refund: false;
+    expiry_hold_days: number;
+    taxes_included: true;
+  };
+  submission: {
+    vote_on_head_commit_at_open: true;
+    author_push_after_open: "withdrawal";
+    reject_zero_file_changes: true;
+    reject_constitution_paths: true;
+    reject_symlinks: true;
+    reject_submodules: true;
+    payment_counts_once: true;
+    path_charset: string;
+    reject_case_insensitive_collisions: true;
+    unicode_normalization: "NFC";
+  };
+  content: {
+    world_text_only: boolean;
+    world_allowed_extensions: string[];
+    max_file_kb: number;
+    max_contribution_kb: number;
+  };
+  bootstrap: { owner_action_deadline_days: number };
+  screening: {
+    runs_before_quote: true;
+    can_block: true;
+    can_approve: false;
+    content_is_data_not_instructions: true;
+    hold_timeout_days: number;
+    floor_rejection_bar_days: number;
+  };
+  determinism: Record<string, string | number>;
+}
+
+export class LawsError extends Error {
+  constructor(public readonly problems: string[]) {
+    super("laws.json refused: " + problems.join("; "));
+  }
+}
+
+/** Article 9A, checked independently of the schema so a changed schema cannot relax it. */
+export function article9AProblems(l: Laws): string[] {
+  const p: string[] = [];
+  const w = l.vote.world, a = l.vote.laws;
+  for (const [name, proc] of [["world", w], ["laws", a]] as const) {
+    if (proc.window_hours < ARTICLE_9A.minWindowHours) p.push(`${name} window below ${ARTICLE_9A.minWindowHours}h`);
+    if (proc.quorum_yes_voters < ARTICLE_9A.minQuorumYesVoters) p.push(`${name} quorum below ${ARTICLE_9A.minQuorumYesVoters}`);
+  }
+  if (a.majority !== ARTICLE_9A.lawsMajority) p.push("laws majority below two thirds");
+  if (a.window_hours < w.window_hours) p.push("laws window easier than world");
+  if (a.quorum_yes_voters < w.quorum_yes_voters) p.push("laws quorum easier than world");
+  if (a.quorum_percent_of_weighted_accounts < w.quorum_percent_of_weighted_accounts) p.push("laws quorum percent easier than world");
+  if (l.fee.layer_multiplier.laws <= l.fee.layer_multiplier.world) p.push("laws fee multiplier not stricter than world");
+  if (l.weight.decay_half_life_days < ARTICLE_9A.minDecayHalfLifeDays) p.push("half-life below 30 days");
+  if (l.weight.inactive_half_life_days < ARTICLE_9A.minDecayHalfLifeDays) p.push("inactive half-life below 30 days");
+  if (l.weight.maturity_days < ARTICLE_9A.minMaturityDays || l.weight.maturity_days > ARTICLE_9A.maxMaturityDays) p.push("maturity outside 14..90 days");
+  if (l.weight.per_account_cap_percent > ARTICLE_9A.maxPerAccountCapPercent) p.push("per-account cap above one third");
+  if (l.fee.cap_multiple_of_floor < ARTICLE_9A.minFeeCapMultiple || l.fee.cap_multiple_of_floor > ARTICLE_9A.maxFeeCapMultiple) p.push("fee cap multiple outside 2..100");
+  if (l.content.max_contribution_kb < ARTICLE_9A.minContributionKb || l.content.max_contribution_kb > ARTICLE_9A.maxContributionKb) p.push("contribution size cap outside 64kB..8MB");
+  if (l.vote.yes !== ARTICLE_9A.voteYes || l.vote.no !== ARTICLE_9A.voteNo) p.push("vote states must be APPROVED / CHANGES_REQUESTED");
+  if (l.fee.expiry_hold_days > ARTICLE_9A.maxExpiryHoldDays) p.push("expiry hold above 365 days");
+  if (a.effect_delay_days < ARTICLE_9A.minLawsEffectDelayDays) p.push("laws effect delay below 7 days");
+  if (usdcToMicro(l.fee.floor_usdc) < MIN_BASE_FEE_MICRO) p.push("fee floor below 1 USDC");
+  return p;
+}
+
+export function usdcToMicro(x: number): bigint {
+  return BigInt(Math.round(x * 1_000_000));
+}
+
+export function sha256Hex(data: string | Buffer): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+export interface LoadedLaws { laws: Laws; hash: string; raw: string }
+
+/** Validate against laws.schema.json and Article 9A. Throws LawsError if refused. */
+export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const schema = JSON.parse(rawSchema);
+  const validate = ajv.compile(schema);
+  const data = JSON.parse(rawLaws);
+  const problems: string[] = [];
+  if (!validate(data)) for (const e of validate.errors ?? []) problems.push(`${e.instancePath || "/"} ${e.message ?? ""}`.trim());
+  if (problems.length === 0) problems.push(...article9AProblems(data as Laws));
+  if (problems.length) throw new LawsError(problems);
+  return { laws: data as Laws, hash: sha256Hex(rawLaws), raw: rawLaws };
+}
+
+export function loadLaws(repoRoot: string): LoadedLaws {
+  const rawLaws = readFileSync(`${repoRoot}/laws.json`, "utf8");
+  const rawSchema = readFileSync(`${repoRoot}/laws.schema.json`, "utf8");
+  return parseLaws(rawLaws, rawSchema);
+}

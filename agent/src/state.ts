@@ -1,0 +1,139 @@
+/**
+ * Fold ledger events into state.json (ledger/README.md). Pure and deterministic:
+ * the replay tool and the running agent share this exact code.
+ */
+import type { LedgerEvent } from "./ledger.js";
+import type { Laws } from "./laws.js";
+import { weightsAt, type Merge } from "./weight.js";
+
+export interface HeldFee { account: number; layer: "world" | "laws"; micro: bigint; until: number; pr: number }
+export interface OpenVote { pr: number; head: string; layer: "world" | "laws"; opened: number; closes: number; laws_hash: string; qualified: number[]; authors: number[]; weightedAccountsAtOpen: number }
+
+export interface State {
+  version: 2;
+  computed_at: number | null;
+  head_event: number;
+  bootstrap: { active: boolean; began: number | null; ends_by: number | null };
+  fee: { base_micro: bigint; destination: string | null; last_adjusted_at: number | null };
+  weights: Record<string, { login: string; mature_micro: bigint; immature_micro: bigint; last_vote_at: number | null }>;
+  weighted_accounts: number;
+  open_votes: OpenVote[];
+  held_fees: HeldFee[];
+  deployed_agent: string | null;
+  /** Internal bookkeeping needed to continue folding; included in state.json for transparency. */
+  merges: Array<{ pr: number; account: number; mergedAt: number; weightMicro: bigint; revoked?: boolean }>;
+  logins: Record<string, string>;
+  last_vote_at: Record<string, number>;
+  owner_accounts: number[];
+  agent_account: number | null;
+  barred_until: Record<string, number>;
+}
+
+export function emptyState(): State {
+  return {
+    version: 2, computed_at: null, head_event: 0,
+    bootstrap: { active: false, began: null, ends_by: null },
+    fee: { base_micro: 1_000_000n, destination: null, last_adjusted_at: null },
+    weights: {}, weighted_accounts: 0, open_votes: [], held_fees: [], deployed_agent: null,
+    merges: [], logins: {}, last_vote_at: {}, owner_accounts: [], agent_account: null, barred_until: {},
+  };
+}
+
+const big = (v: unknown): bigint => (typeof v === "bigint" ? v : BigInt(String(v)));
+const num = (v: unknown): number => Number(v);
+
+/** Apply one event. Mutates and returns the state. */
+export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
+  switch (e.type) {
+    case "genesis":
+      s.bootstrap = { active: true, began: e.at, ends_by: e.at + 365 * 86400 };
+      s.fee.destination = String(e["fee_destination"]);
+      s.owner_accounts = (e["owner_accounts"] as number[]) ?? [];
+      s.agent_account = e["agent_account"] !== undefined ? num(e["agent_account"]) : null;
+      break;
+    case "vote_open":
+      s.open_votes.push({
+        pr: num(e["pr"]), head: String(e["head"]), layer: e["layer"] as "world" | "laws", opened: num(e["opened"]), closes: num(e["closes"]),
+        laws_hash: String(e["laws_hash"]), qualified: (e["qualified"] as number[]) ?? [], authors: (e["authors"] as number[]) ?? [],
+        weightedAccountsAtOpen: num(e["weighted_accounts"]),
+      });
+      break;
+    case "review": {
+      const acct = num(e["account"]);
+      s.logins[acct] = String(e["login"]);
+      const t = num(e["submitted"]);
+      if ((s.last_vote_at[acct] ?? 0) < t) s.last_vote_at[acct] = t;
+      break;
+    }
+    case "vote_close":
+    case "withdrawal":
+      s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
+      break;
+    case "merge": {
+      const acct = num(e["account"]);
+      s.logins[acct] = String(e["login"] ?? s.logins[acct] ?? "");
+      s.merges.push({ pr: num(e["pr"]), account: acct, mergedAt: e.at, weightMicro: big(e["weight_micro"]) });
+      s.held_fees = s.held_fees.filter((h) => !(h.account === acct && h.pr === num(e["pr"])));
+      break;
+    }
+    case "expiry":
+      s.held_fees.push({ account: num(e["account"]), layer: e["layer"] as "world" | "laws", micro: big(e["fee_micro"]), until: num(e["held_until"]), pr: num(e["pr"]) });
+      s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
+      break;
+    case "owner_reject": {
+      s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
+      if (e["barred_until"] !== undefined) s.barred_until[num(e["account"])] = num(e["barred_until"]);
+      break;
+    }
+    case "fee_adjust":
+      s.fee.base_micro = big(e["base_micro"]);
+      s.fee.last_adjusted_at = e.at;
+      break;
+    case "takedown":
+      for (const pr of (e["prs"] as number[]) ?? []) for (const m of s.merges) if (m.pr === pr) m.revoked = true;
+      break;
+    case "destination_change":
+      s.fee.destination = String(e["destination"]);
+      break;
+    case "deploy":
+      s.deployed_agent = String(e["commit"]);
+      break;
+    case "declare":
+      if (e["what"] === "bootstrap_end") s.bootstrap.active = false;
+      break;
+    case "hold_resolved":
+      if (e["decision"] === "reject" && e["barred_until"] !== undefined) s.barred_until[num(e["account"])] = num(e["barred_until"]);
+      break;
+    default:
+      break;
+  }
+  s.head_event = e.id;
+  return s;
+}
+
+/** Recompute weights at `now` from the folded merges. */
+export function materialize(s: State, now: number, laws: Laws): State {
+  const merges: Merge[] = s.merges.filter((m) => !m.revoked).map((m) => ({ account: m.account, mergedAt: m.mergedAt, weightMicro: m.weightMicro }));
+  const lastVote = new Map<number, number>(Object.entries(s.last_vote_at).map(([k, v]) => [Number(k), v]));
+  const w = weightsAt(merges, lastVote, now, laws);
+  s.weights = {};
+  let count = 0;
+  for (const [acct, aw] of w) {
+    s.weights[acct] = { login: s.logins[acct] ?? "", mature_micro: aw.matureMicro, immature_micro: aw.immatureMicro, last_vote_at: s.last_vote_at[acct] ?? null };
+    if (aw.matureMicro > 0n) count++;
+  }
+  s.weighted_accounts = count;
+  s.held_fees = s.held_fees.filter((h) => h.until > now);
+  s.computed_at = now;
+  return s;
+}
+
+export function fold(events: LedgerEvent[], now: number, laws: Laws): State {
+  let s = emptyState();
+  for (const e of events) s = applyEvent(s, e, laws);
+  return materialize(s, now, laws);
+}
+
+export function serializeState(s: State): string {
+  return JSON.stringify(s, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2) + "\n";
+}

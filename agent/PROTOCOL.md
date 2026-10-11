@@ -31,7 +31,9 @@ A quote expires 24 hours after it is posted. Verify `destination` against `CONST
 
 ## Payment
 
-Request the `pay` endpoint. It answers HTTP 402 with x402 payment requirements for exactly `fee_usdc` in USDC on Base to `destination`. The x402 payload's resource identifies the pull request number, which is how the payment is bound to the submission; USDC transfers themselves carry no memo. Retry the request with the x402 payment header. A successful response returns the transaction hash, which the agent also records in the ledger.
+Send `POST` to the `pay` endpoint, which is `/pay/{pull request number}`. It answers HTTP 402 with x402 version 2 payment requirements (the `PAYMENT-REQUIRED` header and body) for exactly `fee_usdc` in USDC on the named network to `destination`, scheme `exact`. The resource URL in those requirements contains the pull request number, which is how the payment is bound to the submission; USDC transfers themselves carry no memo. Retry the `POST` with the `PAYMENT-SIGNATURE` header. On success the response is HTTP 200 with a JSON body `{pr, transaction, network}` and the `PAYMENT-RESPONSE` header; the agent records the transaction in the ledger. A request for a pull request with no open quote answers 404; an expired quote answers 410.
+
+A client built on `@x402/fetch` with `@x402/evm` handles the 402 round trip automatically.
 
 Arrival is judged by the block timestamp. Payments that do not match an open quote, and amounts above the quote, are not refunded.
 

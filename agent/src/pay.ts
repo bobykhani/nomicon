@@ -1,0 +1,106 @@
+/**
+ * The x402 payment endpoint. POST /pay/{pr} answers 402 with the quoted fee;
+ * a request carrying a valid PAYMENT-SIGNATURE is verified and settled through
+ * the facilitator, and the settled transaction is handed to the runtime.
+ * The pull request number lives in the resource URL, which is what binds a
+ * payment to a submission (Law 5, PROTOCOL.md).
+ */
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
+import { x402HTTPResourceServer, type HTTPAdapter, type HTTPRequestContext } from "@x402/core/http";
+import { registerExactEvmScheme } from "@x402/evm/exact/server";
+import type { PaymentNotice } from "./ports.js";
+
+export interface OpenQuote { pr: number; feeMicro: bigint; destination: string; expires: number }
+
+export interface PayServerOptions {
+  network: "eip155:8453" | "eip155:84532";
+  facilitatorUrl: string;
+  /** Current open quote for a pull request, or null. */
+  quoteFor(pr: number): OpenQuote | null;
+  onPaid(notice: PaymentNotice): Promise<void>;
+  now(): number;
+  publicBaseUrl: string;
+}
+
+function adapterFor(req: IncomingMessage, url: URL): HTTPAdapter {
+  const h = (name: string) => {
+    const v = req.headers[name.toLowerCase()];
+    return Array.isArray(v) ? v[0] : v;
+  };
+  return {
+    getHeader: h,
+    getMethod: () => req.method ?? "GET",
+    getPath: () => url.pathname,
+    getUrl: () => url.toString(),
+    getAcceptHeader: () => h("accept") ?? "",
+    getUserAgent: () => h("user-agent") ?? "",
+    getQueryParams: () => Object.fromEntries(url.searchParams.entries()),
+    getQueryParam: (n) => url.searchParams.get(n) ?? undefined,
+  };
+}
+
+export async function createPayServer(opts: PayServerOptions): Promise<{ server: Server; http: x402HTTPResourceServer }> {
+  const facilitator = new HTTPFacilitatorClient({ url: opts.facilitatorUrl });
+  const core = registerExactEvmScheme(new x402ResourceServer(facilitator), { networks: [opts.network] });
+  const prOf = (path: string): number | null => {
+    const m = /^\/pay\/(\d+)$/.exec(path);
+    return m ? Number(m[1]) : null;
+  };
+  const http = new x402HTTPResourceServer(core, {
+    "POST /pay/[pr]": {
+      accepts: {
+        scheme: "exact",
+        network: opts.network,
+        payTo: (ctx) => {
+          const q = opts.quoteFor(prOf(ctx.path) ?? -1);
+          if (!q) throw new Error("no open quote");
+          return q.destination;
+        },
+        price: (ctx) => {
+          const q = opts.quoteFor(prOf(ctx.path) ?? -1);
+          if (!q) throw new Error("no open quote");
+          return (Number(q.feeMicro) / 1_000_000).toFixed(6);
+        },
+        maxTimeoutSeconds: 600,
+      },
+      description: "Nomicon publication fee for one pull request",
+      mimeType: "application/json",
+    },
+  });
+  await http.initialize();
+
+  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url ?? "/", opts.publicBaseUrl);
+    const pr = prOf(url.pathname);
+    const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
+      res.writeHead(status, { "content-type": "application/json", ...headers });
+      res.end(JSON.stringify(body));
+    };
+    if (req.method !== "POST" || pr === null) return json(404, { error: "not found" });
+    const q = opts.quoteFor(pr);
+    if (!q) return json(404, { error: "no open quote for this pull request" });
+    if (q.expires < opts.now()) return json(410, { error: "quote expired; the agent will issue a new one" });
+    const ctx: HTTPRequestContext = { adapter: adapterFor(req, url), path: url.pathname, method: "POST" };
+    try {
+      const result = await http.processHTTPRequest(ctx);
+      if (result.type === "payment-error") {
+        res.writeHead(result.response.status, result.response.headers);
+        res.end(typeof result.response.body === "string" ? result.response.body : JSON.stringify(result.response.body ?? {}));
+        return;
+      }
+      if (result.type === "no-payment-required") return json(500, { error: "route misconfigured" });
+      const settled = await http.processSettlement(result.paymentPayload, result.paymentRequirements, result.declaredExtensions, { request: ctx }, undefined, result.beforeHandlerSettlement);
+      if (!settled.success) {
+        res.writeHead(settled.response.status, settled.response.headers);
+        res.end(JSON.stringify(settled.response.body ?? { error: settled.errorReason }));
+        return;
+      }
+      await opts.onPaid({ pr, tx: settled.transaction, payer: settled.payer ?? "", amountMicro: BigInt(result.paymentRequirements.amount), network: settled.network });
+      json(200, { pr, transaction: settled.transaction, network: settled.network }, settled.headers);
+    } catch (e) {
+      json(500, { error: (e as Error).message });
+    }
+  });
+  return { server, http };
+}
