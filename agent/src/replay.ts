@@ -22,13 +22,20 @@ export interface ReplayResult { ok: boolean; findings: ReplayFinding[]; state: S
 export function replay(events: LedgerEvent[], lawsByHash: Map<string, string>, rawSchema: string, publicKeyPem: string | null, now: number): ReplayResult {
   const findings: ReplayFinding[] = [];
   const lawsCache = new Map<string, Laws>();
-  for (const e of events) if (e.type === "laws_snapshot" && typeof e["laws_raw"] === "string" && !lawsByHash.has(String(e["laws_hash"]))) lawsByHash.set(String(e["laws_hash"]), e["laws_raw"] as string);
+  // Each Laws version is validated against the schema that was in force with it, not the latest one.
+  const schemaByHash = new Map<string, string>();
+  for (const e of events) {
+    if (e.type !== "laws_snapshot" || typeof e["laws_raw"] !== "string") continue;
+    const h = String(e["laws_hash"]);
+    if (!lawsByHash.has(h)) lawsByHash.set(h, e["laws_raw"] as string);
+    if (typeof e["schema_raw"] === "string" && !schemaByHash.has(h)) schemaByHash.set(h, e["schema_raw"] as string);
+  }
   const lawsFor = (hash: string): Laws => {
     let l = lawsCache.get(hash);
     if (!l) {
       const raw = lawsByHash.get(hash);
       if (!raw) throw new Error(`laws.json with hash ${hash} not available for replay`);
-      l = parseLaws(raw, rawSchema).laws;
+      l = parseLaws(raw, schemaByHash.get(hash) ?? rawSchema).laws;
       lawsCache.set(hash, l);
     }
     return l;
