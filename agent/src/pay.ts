@@ -12,6 +12,7 @@ import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import type { PaymentNotice } from "./ports.js";
 import type { LedgerEvent } from "./ledger.js";
 import type { QuestionsIndex } from "./questions.js";
+import { RateLimiter, clientIp } from "./limits.js";
 
 export interface OpenQuote { pr: number; feeMicro: bigint; destination: string; expires: number }
 
@@ -27,6 +28,8 @@ export interface PayServerOptions {
   feed(since: number): LedgerEvent[];
   /** Law 12: the open-questions index. */
   questions(): QuestionsIndex;
+  /** Per-client limits. `trustProxy` reads X-Forwarded-For; only behind a proxy that sets it. */
+  limits?: { trustProxy?: boolean; getPerMinute?: number; payPerMinute?: number };
 }
 
 function adapterFor(req: IncomingMessage, url: URL): HTTPAdapter {
@@ -76,13 +79,19 @@ export async function createPayServer(opts: PayServerOptions): Promise<{ server:
   });
   await http.initialize();
 
-  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+  const getLimit = new RateLimiter(opts.limits?.getPerMinute ?? 120);
+  const payLimit = new RateLimiter(opts.limits?.payPerMinute ?? 10);
+  const server = createServer({ maxHeaderSize: 32 * 1024 }, async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", opts.publicBaseUrl);
     const pr = prOf(url.pathname);
     const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
       res.writeHead(status, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(body));
     };
+    const ip = clientIp(req, opts.limits?.trustProxy ?? false);
+    const limiter = req.method === "POST" && pr !== null ? payLimit : getLimit;
+    if (!limiter.allow(ip, Date.now())) return json(429, { error: "too many requests" }, { "retry-after": "60" });
+    if ((req.url ?? "").length > 2048) return json(414, { error: "request too long" });
     if (req.method === "GET" && url.pathname === "/feed") {
       const since = Number(url.searchParams.get("since") ?? "0") || 0;
       const events = opts.feed(since);
@@ -116,5 +125,7 @@ export async function createPayServer(opts: PayServerOptions): Promise<{ server:
       json(500, { error: (e as Error).message });
     }
   });
+  server.requestTimeout = 30_000;
+  server.headersTimeout = 15_000;
   return { server, http };
 }

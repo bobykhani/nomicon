@@ -9,9 +9,11 @@ import { scenarios } from "./scenarios.js";
 
 interface Result { name: string; description: string; checks: Check[]; notes: string[]; events: number; ms: number }
 
+const only = process.argv.slice(2);
+const selected = only.length ? scenarios.filter((s) => only.some((o) => s.name.includes(o))) : scenarios;
 const results: Result[] = [];
 let failed = 0;
-for (const sc of scenarios) {
+for (const sc of selected) {
   const started = Date.now();
   try {
     const sim = await sc.run();
@@ -37,6 +39,7 @@ for (const r of results) {
   for (const n of r.notes) lines.push(`- note: ${n}`);
   lines.push("");
 }
-writeFileSync(resolve(repoRoot, "agent", "SIMULATION.md"), lines.join("\n"), "utf8");
+if (only.length === 0) writeFileSync(resolve(repoRoot, "agent", "SIMULATION.md"), lines.join("\n"), "utf8");
+else console.log(`partial run (${selected.map((s) => s.name).join(", ")}); report not written`);
 console.log(`\n${results.length} scenarios, ${total} claims, ${failed} failed. Report: agent/SIMULATION.md`);
 process.exitCode = failed ? 1 : 0;

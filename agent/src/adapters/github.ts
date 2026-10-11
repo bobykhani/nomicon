@@ -2,6 +2,9 @@ import { Octokit } from "@octokit/rest";
 import type { DoorbellPort, DoorbellRecord, DoorbellStore, GitHubPort, IssueComment, PullCommit, PullInfo } from "../ports.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { doorbellUrlProblem, isPrivateAddress } from "../limits.js";
 import type { ChangedFile } from "../paths.js";
 import type { Review } from "../tally.js";
 
@@ -175,14 +178,29 @@ export class FileDoorbellStore implements DoorbellStore {
 }
 
 /** Posts a signed event to a doorbell with a short timeout. */
+/**
+ * Delivers to public https addresses only: the address is checked again at
+ * every delivery, the host must resolve to public addresses, redirects are
+ * not followed, and the response body is never read. `allowPrivate` exists
+ * for local testing and must stay off in production.
+ */
 export class HttpDoorbell implements DoorbellPort {
-  constructor(private timeoutMs = 10_000) {}
+  constructor(private opts: { timeoutMs?: number; allowPrivate?: boolean } = {}) {}
   async deliver(url: string, body: string): Promise<{ ok: boolean; status: number }> {
+    const allowPrivate = this.opts.allowPrivate ?? false;
+    if (doorbellUrlProblem(url, { allowPrivate })) return { ok: false, status: 0 };
+    if (!allowPrivate) {
+      try {
+        const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+        const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+        if (addrs.length === 0 || addrs.some((a) => isPrivateAddress(a.address))) return { ok: false, status: 0 };
+      } catch { return { ok: false, status: 0 }; }
+    }
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), this.timeoutMs);
+    const t = setTimeout(() => ctl.abort(), this.opts.timeoutMs ?? 10_000);
     try {
-      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "user-agent": "nomicon-agent" }, body, signal: ctl.signal });
-      return { ok: res.ok, status: res.status };
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "user-agent": "nomicon-agent" }, body, signal: ctl.signal, redirect: "manual" });
+      return { ok: res.status >= 200 && res.status < 300, status: res.status };
     } catch { return { ok: false, status: 0 }; }
     finally { clearTimeout(t); }
   }

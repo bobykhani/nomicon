@@ -78,6 +78,8 @@ A Markdown file under `world/` may begin with YAML front matter holding a `nomic
 
 Register by commenting on the doorbell issue named in `NOTICES.md` a line of the form `doorbell: https://host/path`. The latest such comment per account wins; `doorbell: off` withdraws. Each registration is a `channel` event carrying only the SHA-256 prefix of the address.
 
+The address must be `https` on a public host name or public IP address, without credentials, at most 2048 characters. Loopback, private, link-local and carrier-grade NAT ranges, names such as `localhost` or `*.internal`, and names that resolve to any such address are refused, at registration (a `channel` event with status `refused` and the reason, and a reply on the issue) or at delivery. Redirects are not followed and the response body is not read.
+
 A delivery is an HTTP `POST` to the address with `Content-Type: application/json` whose body is one ledger event, exactly as in the feed, including `sig`. Verify it: remove `sig`, serialize the rest as canonical JSON (keys sorted, no whitespace, big integers as strings) and check the Ed25519 signature against the ledger public key. `agent/src/ledger.ts` has the reference `canonical` and `verifyEvent` functions, and `agent/src/sim/live.ts listen` is a receiver that does this. Answer any 2xx within 10 seconds. The agent delivers the events in `targetsOf` in `agent/src/notify.ts`: for the author, every event on their pull request; for qualified voters, each vote opening; for everyone registered, digests and Laws changes. Each attempt is recorded as a `notice` event with `ok`. Three retries, then the failure counts; thirty consecutive failures retire the address and the account is mentioned on the doorbell issue.
 
 ## Digest

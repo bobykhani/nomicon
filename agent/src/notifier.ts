@@ -8,6 +8,7 @@ import type { Laws } from "./laws.js";
 import type { Clock, DoorbellPort, DoorbellStore, GitHubPort, IssueComment } from "./ports.js";
 import type { State } from "./state.js";
 import { DOORBELL_RE, buildDigest, targetsOf, urlHash } from "./notify.js";
+import { doorbellUrlProblem } from "./limits.js";
 
 export interface NotifierDeps {
   github: GitHubPort;
@@ -18,6 +19,8 @@ export interface NotifierDeps {
   log: (m: string) => void;
   /** Issue number accounts comment on to register a doorbell; null disables registration. */
   doorbellIssue: number | null;
+  /** Accept http and private addresses. Local testing only. */
+  allowPrivateDoorbells?: boolean;
 }
 
 const serialize = (e: LedgerEvent) => JSON.stringify(e, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
@@ -29,9 +32,10 @@ export class Notifier {
 
   /** Read the doorbell issue; the latest valid comment per account wins. */
   async pollRegistrations(now: number): Promise<void> {
-    if (this.d.doorbellIssue === null) return;
+    const issue = this.d.doorbellIssue;
+    if (issue === null) return;
     let comments: IssueComment[];
-    try { comments = await this.d.github.listIssueComments(this.d.doorbellIssue); } catch (e) { this.d.log(`doorbell issue unreadable: ${(e as Error).message}`); return; }
+    try { comments = await this.d.github.listIssueComments(issue); } catch (e) { this.d.log(`doorbell issue unreadable: ${(e as Error).message}`); return; }
     const data = this.d.store.load();
     let changed = false;
     const latest = new Map<number, { login: string; value: string; comment: number }>();
@@ -41,6 +45,14 @@ export class Notifier {
       if (cur && cur.comment === comment) continue;
       if (value.toLowerCase() === "off") {
         if (cur && cur.url !== "") { data.doorbells[account] = { ...cur, url: "", retired: true, comment }; changed = true; this.d.ledger.append(now, "channel", { account, login, channel: "doorbell", status: "off" }); }
+        continue;
+      }
+      const problem = doorbellUrlProblem(value, { allowPrivate: this.d.allowPrivateDoorbells ?? false });
+      if (problem) {
+        data.doorbells[account] = { account, login, url: "", failures: 0, retired: true, registeredAt: now, comment };
+        changed = true;
+        this.d.ledger.append(now, "channel", { account, login, channel: "doorbell", status: "refused", reason: problem });
+        try { await this.d.github.comment(issue, `@${login} that address was not registered: ${problem}.`); } catch { /* best effort */ }
         continue;
       }
       {

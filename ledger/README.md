@@ -32,7 +32,7 @@ One JSON object per line, append-only, in order. Every object has `id` (sequenti
 | `refusal` | agent refused a non-compliant laws.json | `laws_hash`, `reason` |
 | `laws_snapshot` | a laws.json version and when it takes effect | `laws_hash`, `laws_raw`, `schema_raw`, `effective_at`, `merge_commit` |
 | `owner_action_applied` | agent carried out an owner decision | `pr`, `event` |
-| `channel` | an account chose how to be reached | `account`, `login`, `channel` (`doorbell`, `watch`), `status` (`active`, `retired`, `off`), `url_hash` |
+| `channel` | an account chose how to be reached | `account`, `login`, `channel` (`doorbell`, `watch`), `status` (`active`, `retired`, `off`, `refused`), `url_hash`, `reason` |
 | `notice` | the agent told someone something | `kind` (`mention`, `doorbell`), `target`, `pr`, `about` (event id), `ok` |
 | `digest` | weekly digest posted | `url`, `merges`, `open_votes`, `open_questions`, `active_accounts` |
 

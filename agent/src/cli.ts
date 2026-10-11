@@ -23,7 +23,9 @@
  * ANCHOR_PRIVATE_KEY, X402_FACILITATOR_URL, NOMICON_PUBLIC_URL, NOMICON_PORT, ANTHROPIC_API_KEY,
  * NOMICON_OWNER_ACCOUNTS (comma-separated numeric ids), NOMICON_AGENT_ACCOUNT, NOMICON_FEE_DESTINATION,
  * NOMICON_DOORBELL_ISSUE (issue number accounts comment on to register a doorbell; unset disables),
- * NOMICON_DATA_DIR (private directory for doorbell URLs; default <repo root>/../nomicon-private).
+ * NOMICON_DATA_DIR (private directory for doorbell URLs; default <repo root>/../nomicon-private),
+ * NOMICON_TRUST_PROXY=1 behind a reverse proxy that sets X-Forwarded-For,
+ * NOMICON_DOORBELL_ALLOW_PRIVATE=1 accepts http and private doorbell addresses (local testing only).
  */
 import { generateKeyPairSync } from "node:crypto";
 import { execSync } from "node:child_process";
@@ -142,7 +144,10 @@ async function run(): Promise<void> {
   const log = (m: string) => console.log(new Date().toISOString(), m);
   const doorbellIssue = process.env["NOMICON_DOORBELL_ISSUE"] ? Number(process.env["NOMICON_DOORBELL_ISSUE"]) : null;
   const dataDir = env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private"));
-  const notifier = new Notifier({ github, doorbell: new HttpDoorbell(), store: new FileDoorbellStore(resolve(dataDir, "doorbells.json")), ledger: led, clock: { now }, log, doorbellIssue });
+  const allowPrivate = process.env["NOMICON_DOORBELL_ALLOW_PRIVATE"] === "1";
+  const trustProxy = process.env["NOMICON_TRUST_PROXY"] === "1";
+  if (allowPrivate) log("WARNING: NOMICON_DOORBELL_ALLOW_PRIVATE is set; private doorbell addresses are accepted. Never run like this in production.");
+  const notifier = new Notifier({ github, doorbell: new HttpDoorbell({ allowPrivate }), store: new FileDoorbellStore(resolve(dataDir, "doorbells.json")), ledger: led, clock: { now }, log, doorbellIssue, allowPrivateDoorbells: allowPrivate });
   const rt = new Runtime({
     github, chain, screen: new ClaudeScreen(), oracle, clock: { now }, ledger: led, publicBaseUrl, notifier,
     loadLaws: async () => ({ rawLaws: await github.readFile("main", "laws.json"), rawSchema: await github.readFile("main", "laws.schema.json") }),
@@ -153,6 +158,7 @@ async function run(): Promise<void> {
     network, facilitatorUrl: env("X402_FACILITATOR_URL", "https://x402.org/facilitator"),
     quoteFor: (pr) => rt.quoteFor(pr), onPaid: (n) => rt.onPaid(n), now, publicBaseUrl,
     feed: (since) => rt.feed(since), questions: () => rt.questionsIndex(),
+    limits: { trustProxy },
   });
   server.listen(Number(env("NOMICON_PORT", "8402")), () => console.log(`payment endpoint on :${env("NOMICON_PORT", "8402")}`));
   const interval = Number(env("NOMICON_TICK_SECONDS", "60")) * 1000;

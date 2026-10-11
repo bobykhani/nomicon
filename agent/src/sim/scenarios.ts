@@ -272,6 +272,10 @@ export const scenarios: Scenario[] = [
     s.github.commentOnIssue(s.doorbellIssue, N, "doorbell: https://newcomer.example/hook/secret-123");
     await s.tick();
     s.check("posting the address again re-registers it", s.events.filter((e) => e.type === "channel" && e["account"] === N.id && e["status"] === "active").length === 2);
+    s.github.commentOnIssue(s.doorbellIssue, M, "doorbell: http://10.0.0.7/hook");
+    await s.tick();
+    s.check("a plain-http or private address is refused, recorded, and the account told", s.events.some((e) => e.type === "channel" && e["account"] === M.id && e["status"] === "refused") && (s.github.issueComments[s.doorbellIssue] ?? []).some((c) => c.account === 0 && c.body.includes("@newcomer2")));
+    s.check("nothing is ever delivered to a refused address", !s.doorbell.deliveries.some((d) => d.url.includes("10.0.0.7")));
   }),
 
   sc("digest-and-watchers", "After seven days the agent posts a digest listing the week's merges and open questions, and records who watches the repository.", async (s) => {
