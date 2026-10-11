@@ -1,0 +1,21 @@
+# Alternative to Docker: systemd unit for a Node install at /srv/nomicon/agent.
+[Unit]
+Description=Nomicon enforcement agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nomicon
+WorkingDirectory=/srv/nomicon/agent
+EnvironmentFile=/srv/nomicon/secrets/agent.env
+Environment=NOMICON_REPO_ROOT=/srv/nomicon/repo NOMICON_DATA_DIR=/srv/nomicon/private NOMICON_LEDGER_KEY=/srv/nomicon/secrets/ledger.pem GITHUB_APP_PRIVATE_KEY=/srv/nomicon/secrets/github-app.pem NOMICON_TRUST_PROXY=1
+ExecStart=/usr/bin/node dist/cli.js run
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/nomicon/repo /srv/nomicon/private
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,36 @@
+# Nomicon agent behind Caddy, which terminates TLS for NOMICON_DOMAIN.
+# Host layout (see ../RUNBOOK.md):
+#   /srv/nomicon/repo      clone of the repository; ledger/ is written here
+#   /srv/nomicon/private   doorbell addresses (never published)
+#   /srv/nomicon/secrets   ledger.pem, github-app.pem, agent.env (mode 600)
+services:
+  agent:
+    build: ..
+    restart: unless-stopped
+    env_file: /srv/nomicon/secrets/agent.env
+    environment:
+      NOMICON_REPO_ROOT: /data/repo
+      NOMICON_DATA_DIR: /data/private
+      NOMICON_LEDGER_KEY: /run/nomicon/ledger.pem
+      GITHUB_APP_PRIVATE_KEY: /run/nomicon/github-app.pem
+      NOMICON_TRUST_PROXY: "1"
+      NOMICON_PORT: "8402"
+    volumes:
+      - /srv/nomicon/repo:/data/repo
+      - /srv/nomicon/private:/data/private
+      - /srv/nomicon/secrets:/run/nomicon:ro
+    expose: ["8402"]
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "5" } }
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      NOMICON_DOMAIN: ${NOMICON_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  caddy_data:
+  caddy_config:
