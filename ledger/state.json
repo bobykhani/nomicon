@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "computed_at": null,
+  "head_event": 0,
+  "bootstrap": { "active": false, "began": null, "ends_by": null },
+  "fee": { "base_micro": 1000000, "destination": null, "last_adjusted_at": null },
+  "weights": {},
+  "weighted_accounts": 0,
+  "open_votes": [],
+  "held_fees": [],
+  "deployed_agent": null
+}

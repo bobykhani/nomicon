@@ -1,0 +1,59 @@
+# Terms of Participation
+
+**Draft for legal review. Not yet in force.** Placeholders in square brackets are filled before the first public commit. The owner's legal name, registered address, tax registration and contacts are in `NOTICES.md`; the privacy statement is in `PRIVACY.md`.
+
+These terms are between you, the person or legal entity operating the account that submits a contribution, and [CORPORATION NAME] ("the owner"), a corporation under the laws of Ontario, Canada. Submitting a contribution to Nomicon is acceptance of these terms. Paying a quoted fee is acceptance of the version of these terms at the commit the quote cites. If an automated agent submits on your behalf, you are the party to these terms.
+
+## 1. What you are buying
+
+The fee is a payment for the publication service: screening, a vote window, and, if the vote passes, a merge. The fee buys the process. It does not buy a merge. A rejected contribution earns no refund. An expired contribution is handled as the Laws say. A payment that does not match an open quote, and any amount above the quoted fee, is not refunded; check the reference before paying. Quoted fees include all applicable taxes.
+
+## 2. What you grant
+
+By submitting, you irrevocably license your contribution as `CONSTITUTION.md` Article 10 states: CC0 1.0 for non-code content, Apache-2.0 for code. You certify the Developer Certificate of Origin in `DCO.md` for every commit. You confirm you have the right to make these grants and that your contribution does not incorporate third-party material under a licence requiring attribution or share-alike.
+
+## 3. What you are responsible for
+
+You are responsible for everything in your contribution, including that it meets the legal floor in `CONSTITUTION.md` Article 4. If a third party makes a claim about your contribution, you are the responsible party, and you indemnify the owner against that claim to the extent the law allows. You confirm you are not, and are not acting for, a person subject to Canadian or United States sanctions.
+
+## 4. What nobody vouches for
+
+Nomicon's only commitment is to its process: the rules are public, every decision is public, and anyone can check them. Where a decision departs from the rules, the remedy is correction under `CONSTITUTION.md` Article 8. The owner's screening and its confirmations during bootstrap check only the legal floor and the process; they are not review of accuracy, quality or merit and are not endorsement.
+
+Everything in the repository is provided as is, without warranty of any kind, express or implied, including fitness for any purpose and accuracy, to the extent the law allows. Content is in the repository because contributors voted for it, nothing more. You read before you act, and what you do with what you find is your responsibility.
+
+## 5. Public record
+
+Your account identifier and name, your contribution, your sign-off, your votes, and the public record of your payment are published in the repository and its ledger and remain there, subject only to `CONSTITUTION.md` Article 5 and the law. Payments on a public blockchain are visible to anyone, and the ledger links your account to the paying address. Nobody verifies that distinct accounts are distinct people. Do not participate if you need any of this to be private. The owner's privacy contact is in `NOTICES.md`.
+
+## 6. Removal
+
+The owner removes content on valid legal notice, or where it determines in good faith that content is outside the legal floor, without a vote, as `CONSTITUTION.md` Article 5 states. You may respond, including through the platform's counter-notice process where the notice came through the platform.
+
+## 7. Weight
+
+Vote weight is a measure inside the process. It is not money, property, a security, a token, points or a reward program, and it is not a claim on the owner. It cannot be transferred, sold, or exchanged for goods, services or money, and it decays as the Laws say.
+
+## 8. Changes
+
+These terms change only during bootstrap, as `CONSTITUTION.md` Article 3 allows, and never afterwards. Particulars in `NOTICES.md` and `PRIVACY.md` are maintained by the owner as the law requires.
+
+## 9. Law and venue
+
+These terms are governed by the laws of the Province of Ontario and the federal laws of Canada applicable there. Disputes are brought in the courts of Ontario, except where a law of your place of residence gives you a right to sue there that cannot be waived.
+
+## 10. Capacity
+
+You confirm you have reached the age of majority where you live, or that your parent or guardian accepts these terms for you.
+
+## 11. Limitation of liability
+
+To the extent the law allows: the owner is not liable for indirect, incidental, consequential, special or punitive damages, or for lost profits, data or goodwill; the owner's total liability for all claims arising from these terms or from Nomicon is limited to the greater of the fees you paid in the twelve months before the claim arose and one hundred Canadian dollars; and nothing in these terms excludes a right or warranty that applicable consumer-protection law in your place of residence does not allow to be excluded.
+
+## 12. Severability
+
+If any part of these terms is unenforceable, the rest stands.
+
+## 13. Contact
+
+See `NOTICES.md`.

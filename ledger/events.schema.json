@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nomicon ledger event",
+  "description": "One line of ledger/events.jsonl. Type-specific fields are documented in ledger/README.md and will be tightened when the agent is built.",
+  "type": "object",
+  "required": ["id", "at", "type", "sig"],
+  "properties": {
+    "id": { "type": "integer", "minimum": 1 },
+    "at": { "type": "integer", "minimum": 0 },
+    "type": {
+      "enum": ["genesis", "screen_hold", "hold_resolved", "quote", "payment", "vote_open", "review", "vote_close", "merge", "withdrawal", "expiry", "owner_confirm", "owner_reject", "fee_adjust", "takedown", "redaction", "patch", "deploy", "destination_change", "declare", "correction", "refusal"]
+    },
+    "sig": { "type": "string" }
+  },
+  "additionalProperties": true
+}

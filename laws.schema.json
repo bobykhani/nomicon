@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nomicon Laws",
+  "description": "Machine-readable values of LAWS.md. LAWS.md is authoritative; this file must match it. Minimums here mirror Constitution Article 9A, which the enforcement agent also enforces directly.",
+  "type": "object",
+  "required": ["version", "effective", "vote", "weight", "fee", "submission", "content", "bootstrap", "screening", "determinism"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "effective": { "type": "string", "format": "date" },
+    "vote": {
+      "type": "object",
+      "required": ["world", "laws", "mechanism", "yes", "no", "author_may_vote", "rules_snapshot_at_open"],
+      "properties": {
+        "world": { "$ref": "#/$defs/procedure" },
+        "laws": {
+          "allOf": [
+            { "$ref": "#/$defs/procedure" },
+            {
+              "required": ["effect_delay_days"],
+              "properties": {
+                "majority": { "const": "two_thirds_weight" },
+                "effect_delay_days": { "type": "integer", "minimum": 7 }
+              }
+            }
+          ]
+        },
+        "mechanism": { "const": "github_pull_request_review" },
+        "yes": { "const": "APPROVED" },
+        "no": { "const": "CHANGES_REQUESTED" },
+        "author_may_vote": { "const": false },
+        "rules_snapshot_at_open": { "const": true }
+      }
+    },
+    "weight": {
+      "type": "object",
+      "required": ["source", "decay_half_life_days", "inactive_after_days_without_vote", "inactive_half_life_days", "maturity_days", "per_account_cap_percent", "transferable", "unit"],
+      "properties": {
+        "source": { "const": "quoted_base_times_layer_multiplier_usdc" },
+        "decay_half_life_days": { "type": "number", "minimum": 30 },
+        "inactive_after_days_without_vote": { "type": "number", "minimum": 1 },
+        "inactive_half_life_days": { "type": "number", "minimum": 30 },
+        "maturity_days": { "type": "number", "minimum": 14, "maximum": 90 },
+        "per_account_cap_percent": { "type": "number", "exclusiveMinimum": 0, "maximum": 33.333 },
+        "transferable": { "const": false },
+        "unit": { "const": "micro_usdc_integer_round_half_even" }
+      }
+    },
+    "fee": {
+      "type": "object",
+      "required": ["asset", "network", "network_caip2", "protocol", "floor_usdc", "cap_multiple_of_floor", "adjust_every_hours", "lookback_hours", "rise_step_percent", "fall_step_percent", "target_min_per_day", "target_capacity_fraction", "target_lookback_days", "target_votes_per_contribution", "layer_multiplier", "concurrency_base", "size_free_kb", "size_per_kb_usdc", "quote_valid_hours", "rejection_refund", "expiry_hold_days", "taxes_included"],
+      "properties": {
+        "asset": { "const": "USDC" },
+        "network": { "type": "string" },
+        "network_caip2": { "type": "string" },
+        "protocol": { "type": "string" },
+        "floor_usdc": { "type": "number", "minimum": 1.0 },
+        "cap_multiple_of_floor": { "type": "number", "minimum": 2, "maximum": 100 },
+        "adjust_every_hours": { "type": "number", "exclusiveMinimum": 0 },
+        "lookback_hours": { "type": "number", "exclusiveMinimum": 0 },
+        "rise_step_percent": { "type": "number", "minimum": 0 },
+        "fall_step_percent": { "type": "number", "minimum": 0 },
+        "target_min_per_day": { "type": "integer", "minimum": 1 },
+        "target_capacity_fraction": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "target_lookback_days": { "type": "integer", "minimum": 1 },
+        "target_votes_per_contribution": { "type": "integer", "minimum": 1 },
+        "layer_multiplier": {
+          "type": "object",
+          "required": ["world", "laws"],
+          "properties": { "world": { "type": "number", "minimum": 1 }, "laws": { "type": "number", "minimum": 2 } }
+        },
+        "concurrency_base": { "type": "number", "minimum": 1 },
+        "size_free_kb": { "type": "number", "minimum": 0 },
+        "size_per_kb_usdc": { "type": "number", "minimum": 0 },
+        "quote_valid_hours": { "type": "number", "minimum": 1 },
+        "rejection_refund": { "const": false },
+        "expiry_hold_days": { "type": "integer", "minimum": 0, "maximum": 365 },
+        "taxes_included": { "const": true }
+      }
+    },
+    "submission": {
+      "type": "object",
+      "required": ["vote_on_head_commit_at_open", "author_push_after_open", "reject_zero_file_changes", "reject_constitution_paths", "reject_symlinks", "reject_submodules", "payment_counts_once", "path_charset", "reject_case_insensitive_collisions", "unicode_normalization"],
+      "properties": {
+        "vote_on_head_commit_at_open": { "const": true },
+        "author_push_after_open": { "const": "withdrawal" },
+        "reject_zero_file_changes": { "const": true },
+        "reject_constitution_paths": { "const": true },
+        "reject_symlinks": { "const": true },
+        "reject_submodules": { "const": true },
+        "payment_counts_once": { "const": true },
+        "path_charset": { "type": "string" },
+        "reject_case_insensitive_collisions": { "const": true },
+        "unicode_normalization": { "const": "NFC" }
+      }
+    },
+    "content": {
+      "type": "object",
+      "required": ["world_text_only", "world_allowed_extensions", "max_file_kb", "max_contribution_kb"],
+      "properties": {
+        "world_text_only": { "type": "boolean" },
+        "world_allowed_extensions": { "type": "array", "items": { "type": "string", "pattern": "^\\." } },
+        "max_file_kb": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "max_contribution_kb": { "type": "integer", "minimum": 64, "maximum": 8192 }
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "required": ["owner_action_deadline_days"],
+      "properties": { "owner_action_deadline_days": { "type": "integer", "minimum": 1 } }
+    },
+    "screening": {
+      "type": "object",
+      "required": ["runs_before_quote", "can_block", "can_approve", "content_is_data_not_instructions", "hold_timeout_days", "floor_rejection_bar_days"],
+      "properties": {
+        "runs_before_quote": { "const": true },
+        "can_block": { "const": true },
+        "can_approve": { "const": false },
+        "content_is_data_not_instructions": { "const": true },
+        "hold_timeout_days": { "type": "integer", "minimum": 1 },
+        "floor_rejection_bar_days": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "required": ["time", "kilobyte", "tie_hash", "tie_input", "tie_bit", "tie_zero_means", "tie_block"],
+      "properties": {
+        "time": { "const": "utc_seconds" },
+        "kilobyte": { "const": 1024 },
+        "tie_hash": { "const": "sha256" },
+        "tie_input": { "type": "string" },
+        "tie_bit": { "const": "lsb_of_last_byte" },
+        "tie_zero_means": { "const": "merge" },
+        "tie_block": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "procedure": {
+      "type": "object",
+      "required": ["window_hours", "quorum_yes_voters", "quorum_percent_of_weighted_accounts", "majority", "tie"],
+      "properties": {
+        "window_hours": { "type": "number", "minimum": 24 },
+        "quorum_yes_voters": { "type": "integer", "minimum": 3 },
+        "quorum_percent_of_weighted_accounts": { "type": "number", "minimum": 0, "maximum": 100 },
+        "majority": { "enum": ["simple_weight", "two_thirds_weight"] },
+        "tie": { "const": "random_parity" }
+      }
+    }
+  }
+}

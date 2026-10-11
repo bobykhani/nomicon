@@ -1,0 +1,615 @@
+{
+  "version": 1,
+  "relations": [
+    {
+      "from": "big-bang",
+      "to": "particles-and-forces",
+      "type": "desc",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "particles-and-forces",
+      "to": "light-atoms",
+      "type": "desc",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "light-atoms",
+      "to": "stars",
+      "type": "desc",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "stars",
+      "to": "other-galaxies",
+      "type": "desc",
+      "domain": "physics",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "stars",
+      "to": "black-holes",
+      "type": "desc",
+      "domain": "physics",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "stars",
+      "to": "earth",
+      "type": "desc",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "stars",
+      "to": "life-elsewhere",
+      "type": "poss",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "earth",
+      "to": "prebiotic-chemistry",
+      "type": "desc",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "prebiotic-chemistry",
+      "to": "rna-world",
+      "type": "emer",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "rna-world",
+      "to": "luca-common-ancestor",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "luca-common-ancestor",
+      "to": "bacteria",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "luca-common-ancestor",
+      "to": "archaea",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "bacteria",
+      "to": "side-lineage",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "bacteria",
+      "to": "side-lineage-2",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "archaea",
+      "to": "side-lineage-3",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "archaea",
+      "to": "side-lineage-4",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "bacteria",
+      "to": "archaea",
+      "type": "xfer",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.85,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "side-lineage",
+      "to": "side-lineage-3",
+      "type": "xfer",
+      "domain": "life",
+      "width": 0.03,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "side-lineage-2",
+      "to": "side-lineage-4",
+      "type": "xfer",
+      "domain": "life",
+      "width": 0.03,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "viruses",
+      "to": "bacteria",
+      "type": "xfer",
+      "domain": "physics",
+      "width": 0.03,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "viruses",
+      "to": "archaea",
+      "type": "xfer",
+      "domain": "physics",
+      "width": 0.03,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "bacteria",
+      "to": "cyanobacteria",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.04,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "bacteria",
+      "to": "eukaryote",
+      "type": "fuse",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "archaea",
+      "to": "eukaryote",
+      "type": "fuse",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "eukaryote",
+      "to": "plant",
+      "type": "desc",
+      "domain": "plant",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "cyanobacteria",
+      "to": "plant",
+      "type": "fuse",
+      "domain": "plant",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "plant",
+      "to": "algae",
+      "type": "desc",
+      "domain": "plant",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "plant",
+      "to": "flowering-plants",
+      "type": "desc",
+      "domain": "plant",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "stars",
+      "to": "plant",
+      "type": "dep",
+      "domain": "energy",
+      "width": 0.035,
+      "opacity": 0.75,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "eukaryote",
+      "to": "fungi",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.045,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "eukaryote",
+      "to": "animals",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "animals",
+      "to": "insects",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "animals",
+      "to": "molluscs",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "animals",
+      "to": "vertebrates",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "vertebrates",
+      "to": "fish-and-birds",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "vertebrates",
+      "to": "mammals",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "mammals",
+      "to": "dogs-elephants-dolphins",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.035,
+      "opacity": 0.45,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "mammals",
+      "to": "primates",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "primates",
+      "to": "chimpanzee",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.04,
+      "opacity": 0.5,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "primates",
+      "to": "neanderthal",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.04,
+      "opacity": 0.5,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "primates",
+      "to": "human",
+      "type": "desc",
+      "domain": "life",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "neanderthal",
+      "to": "human",
+      "type": "xfer",
+      "domain": "life",
+      "width": 0.03,
+      "opacity": 0.75,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "plant",
+      "to": "human",
+      "type": "dep",
+      "domain": "physics",
+      "width": 0.03,
+      "opacity": 0.75,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "human",
+      "to": "language",
+      "type": "emer",
+      "domain": "culture",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "language",
+      "to": "writing",
+      "type": "desc",
+      "domain": "culture",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "writing",
+      "to": "science",
+      "type": "desc",
+      "domain": "culture",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "science",
+      "to": "internet",
+      "type": "desc",
+      "domain": "culture",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "internet",
+      "to": "human-culture",
+      "type": "desc",
+      "domain": "culture",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "science",
+      "to": "computer",
+      "type": "emer",
+      "domain": "ai",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "computer",
+      "to": "neural-networks",
+      "type": "desc",
+      "domain": "ai",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "neural-networks",
+      "to": "language-models",
+      "type": "desc",
+      "domain": "ai",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "language-models",
+      "to": "agents",
+      "type": "desc",
+      "domain": "ai",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "human-culture",
+      "to": "language-models",
+      "type": "dep",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "human",
+      "to": "sieve-in-human-hands",
+      "type": "dep",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "sieve-in-human-hands",
+      "to": "language-models",
+      "type": "dep",
+      "domain": "ai",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    },
+    {
+      "from": "human-culture",
+      "to": "open-question",
+      "type": "poss",
+      "domain": "culture",
+      "width": 0.06,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "agents",
+      "to": "open-question",
+      "type": "poss",
+      "domain": "ai",
+      "width": 0.06,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "open-question",
+      "to": "merge",
+      "type": "poss",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "open-question",
+      "to": "separation",
+      "type": "poss",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "open-question",
+      "to": "halt",
+      "type": "poss",
+      "domain": "physics",
+      "width": 0.06,
+      "opacity": 0.6,
+      "hidden": false,
+      "arrow": true
+    },
+    {
+      "from": "language-models",
+      "to": "earth",
+      "type": "dep",
+      "domain": "energy",
+      "width": 0.06,
+      "opacity": 1,
+      "hidden": true,
+      "arrow": true
+    }
+  ]
+}

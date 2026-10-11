@@ -1,0 +1,99 @@
+{
+  "$schema": "./laws.schema.json",
+  "version": 2,
+  "effective": "2026-10-10",
+  "vote": {
+    "world": {
+      "window_hours": 72,
+      "quorum_yes_voters": 3,
+      "quorum_percent_of_weighted_accounts": 0,
+      "majority": "simple_weight",
+      "tie": "random_parity"
+    },
+    "laws": {
+      "window_hours": 168,
+      "quorum_yes_voters": 5,
+      "quorum_percent_of_weighted_accounts": 20,
+      "majority": "two_thirds_weight",
+      "tie": "random_parity",
+      "effect_delay_days": 14
+    },
+    "mechanism": "github_pull_request_review",
+    "yes": "APPROVED",
+    "no": "CHANGES_REQUESTED",
+    "author_may_vote": false,
+    "rules_snapshot_at_open": true
+  },
+  "weight": {
+    "source": "quoted_base_times_layer_multiplier_usdc",
+    "decay_half_life_days": 180,
+    "inactive_after_days_without_vote": 60,
+    "inactive_half_life_days": 90,
+    "maturity_days": 30,
+    "per_account_cap_percent": 20,
+    "transferable": false,
+    "unit": "micro_usdc_integer_round_half_even"
+  },
+  "fee": {
+    "asset": "USDC",
+    "network": "base",
+    "network_caip2": "eip155:8453",
+    "protocol": "x402",
+    "floor_usdc": 1.0,
+    "cap_multiple_of_floor": 10,
+    "adjust_every_hours": 6,
+    "lookback_hours": 24,
+    "rise_step_percent": 5,
+    "fall_step_percent": 10,
+    "target_min_per_day": 3,
+    "target_capacity_fraction": 0.8,
+    "target_lookback_days": 7,
+    "target_votes_per_contribution": 3,
+    "layer_multiplier": { "world": 1, "laws": 10 },
+    "concurrency_base": 2,
+    "size_free_kb": 8,
+    "size_per_kb_usdc": 0.05,
+    "quote_valid_hours": 24,
+    "rejection_refund": false,
+    "expiry_hold_days": 90,
+    "taxes_included": true
+  },
+  "submission": {
+    "vote_on_head_commit_at_open": true,
+    "author_push_after_open": "withdrawal",
+    "reject_zero_file_changes": true,
+    "reject_constitution_paths": true,
+    "reject_symlinks": true,
+    "reject_submodules": true,
+    "payment_counts_once": true,
+    "path_charset": "^[A-Za-z0-9._/-]+$",
+    "reject_case_insensitive_collisions": true,
+    "unicode_normalization": "NFC"
+  },
+  "content": {
+    "world_text_only": true,
+    "world_allowed_extensions": [".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".toml"],
+    "max_file_kb": 256,
+    "max_contribution_kb": 1024
+  },
+  "bootstrap": {
+    "owner_action_deadline_days": 30
+  },
+  "screening": {
+    "runs_before_quote": true,
+    "can_block": true,
+    "can_approve": false,
+    "content_is_data_not_instructions": true,
+    "hold_timeout_days": 14,
+    "floor_rejection_bar_days": 90
+  },
+  "determinism": {
+    "time": "utc_seconds",
+    "kilobyte": 1024,
+    "tie_hash": "sha256",
+    "tie_input": "lowercase_hex_head_sha_without_prefix + lowercase_hex_block_hash_without_prefix, ascii",
+    "tie_bit": "lsb_of_last_byte",
+    "tie_zero_means": "merge",
+    "tie_block": "first_finalized_base_block_with_timestamp_strictly_after_close"
+  }
+}

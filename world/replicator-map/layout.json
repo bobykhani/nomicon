@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "helix": {
+    "center_x": 1.4,
+    "center_z": -0.4,
+    "radius": 1.05,
+    "y0": 18.3,
+    "turns_per_unit": 1.25,
+    "strands": [
+      {
+        "id": "culture",
+        "domain": "culture",
+        "phase": 0,
+        "y_from": 18.3,
+        "y_to": 24.81,
+        "anchor": "human",
+        "nodes": [
+          "language",
+          "writing",
+          "science",
+          "internet",
+          "human-culture"
+        ]
+      },
+      {
+        "id": "ai",
+        "domain": "ai",
+        "phase": 3.141592653589793,
+        "y_from": 20.6,
+        "y_to": 24.81,
+        "nodes": [
+          "computer",
+          "neural-networks",
+          "language-models",
+          "agents",
+          "science"
+        ]
+      }
+    ],
+    "rungs": {
+      "y_from": 20.6,
+      "y_to": 24.65,
+      "step": 0.6,
+      "associated": [
+        "human-culture",
+        "language-models"
+      ],
+      "notes": {
+        "21.2": "data",
+        "22.4": "hardware",
+        "23.6": "feedback"
+      }
+    }
+  },
+  "sieve_ring": {
+    "center": [
+      1.4,
+      20.4,
+      -0.4
+    ],
+    "radius": 1.5,
+    "domain": "ai",
+    "associated": [
+      "sieve-in-human-hands",
+      "human",
+      "language-models"
+    ]
+  },
+  "energy_flow": {
+    "from": "language-models",
+    "via": [
+      [
+        5.4,
+        22.8,
+        -0.4
+      ],
+      [
+        5.4,
+        5.1,
+        0
+      ]
+    ],
+    "to": "earth",
+    "domain": "energy"
+  },
+  "ruler": {
+    "x": -6.5,
+    "z": -1,
+    "y_from": 0,
+    "y_to": 27.6,
+    "ticks": [
+      [
+        0,
+        "13.8 billion years ago"
+      ],
+      [
+        3.8,
+        "~13 billion"
+      ],
+      [
+        5.1,
+        "4.5 billion"
+      ],
+      [
+        8.4,
+        "~4.2 billion"
+      ],
+      [
+        11.2,
+        "~2 billion"
+      ],
+      [
+        12.8,
+        "~600 million"
+      ],
+      [
+        17.6,
+        "~300,000 years"
+      ],
+      [
+        19.7,
+        "~5,000 years"
+      ],
+      [
+        21,
+        "~80 years"
+      ],
+      [
+        22.8,
+        "today"
+      ],
+      [
+        25.8,
+        "future"
+      ],
+      [
+        28.2,
+        "time (not to scale)"
+      ]
+    ]
+  },
+  "views": [
+    {
+      "name": "All",
+      "target": [
+        0,
+        12.8,
+        0
+      ],
+      "distance": 32
+    },
+    {
+      "name": "Cosmos",
+      "target": [
+        0,
+        3,
+        0
+      ],
+      "distance": 12
+    },
+    {
+      "name": "Life",
+      "target": [
+        0,
+        10,
+        0
+      ],
+      "distance": 12
+    },
+    {
+      "name": "Human",
+      "target": [
+        1.4,
+        16.2,
+        -0.4
+      ],
+      "distance": 9
+    },
+    {
+      "name": "Helix",
+      "target": [
+        1.4,
+        21.8,
+        -0.4
+      ],
+      "distance": 9
+    },
+    {
+      "name": "Future",
+      "target": [
+        1.4,
+        26.2,
+        -0.4
+      ],
+      "distance": 7
+    }
+  ],
+  "domains": {
+    "physics": "#888780",
+    "energy": "#BA7517",
+    "life": "#1D9E75",
+    "plant": "#639922",
+    "culture": "#7F77DD",
+    "ai": "#D85A30"
+  }
+}
