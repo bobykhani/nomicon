@@ -68,7 +68,8 @@ async function main(argv: string[]): Promise<void> {
     case "genesis": {
       const l = ledger();
       if (l.head > 0) throw new Error("ledger already has events");
-      const { hash } = loadLaws(root());
+      const { hash, raw } = loadLaws(root());
+      const rawSchema = readFileSync(resolve(root(), "laws.schema.json"), "utf8");
       const head = args[0] ?? env("NOMICON_HEAD_COMMIT");
       const e = l.append(now(), "genesis", {
         head, laws_hash: hash,
@@ -78,6 +79,7 @@ async function main(argv: string[]): Promise<void> {
         fee_destination: env("NOMICON_FEE_DESTINATION"),
         network: env("NOMICON_NETWORK"),
       });
+      l.append(now(), "laws_snapshot", { pr: null, laws_hash: hash, laws_raw: raw, schema_raw: rawSchema, effective_at: e.at, merge_commit: head });
       console.log(`genesis recorded as event ${e.id}; bootstrap has begun`);
       return;
     }

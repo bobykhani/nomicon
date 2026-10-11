@@ -8,7 +8,8 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 export type EventType =
   | "genesis" | "intake_reject" | "screen_hold" | "hold_resolved" | "quote" | "quote_lapsed" | "payment" | "vote_open" | "review"
   | "vote_close" | "merge" | "withdrawal" | "expiry" | "owner_confirm" | "owner_reject" | "fee_adjust"
-  | "takedown" | "redaction" | "patch" | "deploy" | "destination_change" | "declare" | "correction" | "refusal";
+  | "takedown" | "redaction" | "patch" | "deploy" | "destination_change" | "declare" | "correction" | "refusal"
+  | "laws_snapshot" | "owner_action_applied";
 
 export interface LedgerEvent {
   id: number;

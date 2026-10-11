@@ -22,6 +22,7 @@ export interface ReplayResult { ok: boolean; findings: ReplayFinding[]; state: S
 export function replay(events: LedgerEvent[], lawsByHash: Map<string, string>, rawSchema: string, publicKeyPem: string | null, now: number): ReplayResult {
   const findings: ReplayFinding[] = [];
   const lawsCache = new Map<string, Laws>();
+  for (const e of events) if (e.type === "laws_snapshot" && typeof e["laws_raw"] === "string" && !lawsByHash.has(String(e["laws_hash"]))) lawsByHash.set(String(e["laws_hash"]), e["laws_raw"] as string);
   const lawsFor = (hash: string): Laws => {
     let l = lawsCache.get(hash);
     if (!l) {
@@ -77,6 +78,7 @@ export function replay(events: LedgerEvent[], lawsByHash: Map<string, string>, r
       const recorded = String(e["result"]);
       const expected = e["bootstrap"] === true ? "await_owner" : t.result;
       if (recorded !== expected) findings.push({ event: e.id, problem: `pr ${pr}: recorded ${recorded}, replay says ${expected}` });
+      if (typeof e["tally_result"] === "string" && e["tally_result"] !== t.result) findings.push({ event: e.id, problem: `pr ${pr}: recorded tally ${e["tally_result"]}, replay says ${t.result}` });
       if (String(e["yes_micro"]) !== t.yesMicro.toString() || String(e["no_micro"]) !== t.noMicro.toString()) findings.push({ event: e.id, problem: `pr ${pr}: weights differ (recorded ${e["yes_micro"]}/${e["no_micro"]}, replay ${t.yesMicro}/${t.noMicro})` });
     }
   }

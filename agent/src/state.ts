@@ -27,6 +27,8 @@ export interface State {
   owner_accounts: number[];
   agent_account: number | null;
   barred_until: Record<string, number>;
+  /** Author account of each pull request, learned from its first intake, hold or quote event. */
+  pr_account: Record<string, number>;
 }
 
 export function emptyState(): State {
@@ -35,7 +37,7 @@ export function emptyState(): State {
     bootstrap: { active: false, began: null, ends_by: null },
     fee: { base_micro: 1_000_000n, destination: null, last_adjusted_at: null },
     weights: {}, weighted_accounts: 0, open_votes: [], held_fees: [], deployed_agent: null,
-    merges: [], logins: {}, last_vote_at: {}, owner_accounts: [], agent_account: null, barred_until: {},
+    merges: [], logins: {}, last_vote_at: {}, owner_accounts: [], agent_account: null, barred_until: {}, pr_account: {},
   };
 }
 
@@ -44,6 +46,8 @@ const num = (v: unknown): number => Number(v);
 
 /** Apply one event. Mutates and returns the state. */
 export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
+  if (e["account"] !== undefined && e["pr"] !== undefined && e["pr"] !== null && (e.type === "quote" || e.type === "screen_hold" || e.type === "intake_reject")) s.pr_account[num(e["pr"])] = num(e["account"]);
+  const accountOf = (): number => (e["account"] !== undefined ? num(e["account"]) : (s.pr_account[num(e["pr"])] ?? NaN));
   switch (e.type) {
     case "genesis":
       s.bootstrap = { active: true, began: e.at, ends_by: e.at + 365 * 86400 };
@@ -82,7 +86,7 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       break;
     case "owner_reject": {
       s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
-      if (e["barred_until"] !== undefined) s.barred_until[num(e["account"])] = num(e["barred_until"]);
+      if (e["barred_until"] !== undefined && Number.isFinite(accountOf())) s.barred_until[accountOf()] = num(e["barred_until"]);
       break;
     }
     case "fee_adjust":
@@ -102,7 +106,7 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       if (e["what"] === "bootstrap_end") s.bootstrap.active = false;
       break;
     case "hold_resolved":
-      if (e["decision"] === "reject" && e["barred_until"] !== undefined) s.barred_until[num(e["account"])] = num(e["barred_until"]);
+      if (e["decision"] === "reject" && e["barred_until"] !== undefined && Number.isFinite(accountOf())) s.barred_until[accountOf()] = num(e["barred_until"]);
       break;
     default:
       break;

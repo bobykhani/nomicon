@@ -30,6 +30,8 @@ One JSON object per line, append-only, in order. Every object has `id` (sequenti
 | `declare` | bootstrap end, maintenance window | `what`, `constitution_hashes` |
 | `correction` | replay found an error | `event_id`, `evidence` |
 | `refusal` | agent refused a non-compliant laws.json | `laws_hash`, `reason` |
+| `laws_snapshot` | a laws.json version and when it takes effect | `laws_hash`, `laws_raw`, `schema_raw`, `effective_at`, `merge_commit` |
+| `owner_action_applied` | agent carried out an owner decision | `pr`, `event` |
 
 ## state.json
 

@@ -14,6 +14,7 @@ export class FakeClock implements Clock {
 }
 
 export interface FakePull extends PullInfo {
+  mergeCommit?: string;
   files: ChangedFile[];
   contents: Record<string, string>;
   commits: PullCommit[];
@@ -23,7 +24,9 @@ export interface FakePull extends PullInfo {
 
 export class FakeGitHub implements GitHubPort {
   pulls = new Map<number, FakePull>();
-  basePaths: string[] = ["README.md", "LAWS.md", "world/README.md"];
+  /** Files at the base branch; merges add to it. */
+  repoFiles: Record<string, string> = { "README.md": "# Nomicon", "LAWS.md": "# Laws", "world/README.md": "# World" };
+  get basePaths(): string[] { return Object.keys(this.repoFiles); }
   published: Array<{ path: string; content: string }> = [];
   merges: Array<{ pr: number; head: string }> = [];
   private seq = 0;
@@ -52,7 +55,9 @@ export class FakeGitHub implements GitHubPort {
   async listCommits(n: number): Promise<PullCommit[]> { return this.pulls.get(n)!.commits; }
   async listReviews(n: number): Promise<Review[]> { return this.pulls.get(n)!.reviews; }
   async listPaths(): Promise<string[]> { return this.basePaths; }
-  async readFile(_ref: string, path: string): Promise<string> {
+  async readFile(ref: string, path: string): Promise<string> {
+    for (const p of this.pulls.values()) if ((p.headSha === ref || p.mergeCommit === ref) && p.contents[path] !== undefined) return p.contents[path]!;
+    if (this.repoFiles[path] !== undefined) return this.repoFiles[path]!;
     for (const p of this.pulls.values()) if (p.contents[path] !== undefined) return p.contents[path]!;
     return "";
   }
@@ -61,8 +66,9 @@ export class FakeGitHub implements GitHubPort {
     const p = this.pulls.get(n)!;
     if (p.headSha !== headSha || p.state !== "open") return null;
     p.state = "closed"; p.merged = true; this.merges.push({ pr: n, head: headSha });
-    for (const path of Object.keys(p.contents)) if (!this.basePaths.includes(path)) this.basePaths.push(path);
-    return createHash("sha1").update("merge" + headSha).digest("hex");
+    for (const [path, content] of Object.entries(p.contents)) this.repoFiles[path] = content;
+    p.mergeCommit = createHash("sha1").update("merge" + headSha).digest("hex");
+    return p.mergeCommit;
   }
   async close(n: number): Promise<void> { this.pulls.get(n)!.state = "closed"; }
   async publishLedger(files: Array<{ path: string; content: string }>): Promise<void> { this.published = files; }
