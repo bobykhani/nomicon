@@ -195,8 +195,10 @@ export class Runtime {
     const held = state.held_fees.find((h) => h.account === pr.author.id && h.layer === result.layer && h.micro >= q.feeMicro);
     const terms = await this.d.termsCommit();
     const expires = now + laws.fee.quote_valid_hours * 3600;
+    const genesis = this.events.find((e) => e.type === "genesis");
+    const network = genesis && typeof genesis["network"] === "string" ? (genesis["network"] as string) : laws.fee.network_caip2;
     const ev = this.d.ledger.append(now, "quote", {
-      pr: pr.number, head: pr.headSha, account: pr.author.id, login: pr.author.login, layer: result.layer,
+      pr: pr.number, head: pr.headSha, account: pr.author.id, login: pr.author.login, layer: result.layer, network,
       fee_micro: held ? 0n : q.feeMicro, base_micro: q.baseMicro, multiplier: q.multiplier, concurrency: q.concurrency, size_kb: q.sizeKbCharged,
       weight_micro: q.weightMicro, terms_commit: terms, destination: state.fee.destination, expires, held_fee_pr: held?.pr ?? null,
     });
@@ -392,7 +394,7 @@ export function quoteComment(q: LedgerEvent, laws: Laws, base: string): string {
     `pr: ${q["pr"]}`, `head: ${q["head"]}`, `layer: ${q["layer"]}`,
     `fee_usdc: ${micro(BigInt(String(q["fee_micro"])))}`, `base_usdc: ${micro(BigInt(String(q["base_micro"])))}`,
     `multiplier: ${q["multiplier"]}`, `concurrency: ${q["concurrency"]}`, `size_kb_charged: ${q["size_kb"]}`,
-    `terms_commit: ${q["terms_commit"]}`, `destination: ${q["destination"]}`, `network: ${laws.fee.network_caip2}`,
+    `terms_commit: ${q["terms_commit"]}`, `destination: ${q["destination"]}`, `network: ${q["network"] ?? laws.fee.network_caip2}`,
     `pay: ${base.replace(/\/$/, "")}/pay/${q["pr"]}`, `expires: ${iso(Number(q["expires"]))}`,
   ];
   return "```nomicon-quote\n" + lines.join("\n") + "\n```\nPay within the validity window with USDC on Base via x402 (see agent/PROTOCOL.md). Paying is acceptance of TERMS.md at the commit shown. Verify the destination against CONSTITUTION.md Article 7 before paying.";
