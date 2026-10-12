@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 10,
+  "version": 11,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -90,7 +90,8 @@
       ".toml"
     ],
     "max_file_kb": 256,
-    "max_contribution_kb": 1024
+    "max_contribution_kb": 1024,
+    "max_world_growth_kb_per_month": 65536
   },
   "bootstrap": {
     "owner_action_deadline_days": 30,

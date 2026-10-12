@@ -440,4 +440,18 @@ export const scenarios: Scenario[] = [
     const idle = await s.submit(H1, { "world/h1/later.md": "later" });
     s.check("with no open vote the founder qualifies for, nothing is owed and the quote is immediate", s.rt.quoteFor(idle.number) !== null, s.eventsFor(idle.number).map((e) => `${e.type}:${String(e["reason"] ?? "")}`).join(",") + ` open=${s.state().open_votes.length}`);
   }),
+
+  sc("growth-budget", "Under Laws that allow the World to grow 2 MB in thirty days, two 1 MB entries merge and a third waits at no charge, while a Laws-layer change is unaffected; thirty days later the third proceeds.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const big = () => Object.fromEntries([0, 1, 2, 3].map((i) => [`world/big/${Math.random().toString(36).slice(2)}-${i}.md`, "x".repeat(256 * 1024)]));
+    const a = await s.submitAndVote(N, big(), [yes(H1), yes(H2), yes(H3)]);
+    const b = await s.submitAndVote(M, big(), [yes(H1), yes(H2), yes(H3)]);
+    s.check("two 1 MB entries merged and their bytes are recorded", merged(s, a) && merged(s, b) && s.eventsFor(b.number).some((e) => e.type === "merge" && Number(e["bytes"]) === 4 * 256 * 1024));
+    const c = await s.submit(X1, big());
+    s.check("a third waits on the growth budget, told why, with no quote", s.rt.quoteFor(c.number) === null && s.eventsFor(c.number).some((e) => e.type === "screen_deferred" && e["reason"] === "growth"), s.eventsFor(c.number).map((e) => `${e.type}:${String(e["reason"] ?? "")}`).join(","));
+    const readme = await s.submit(X2, { "README.md": "# Nomicon, revised" });
+    s.check("a Laws-layer change is not held by the World's growth budget", s.rt.quoteFor(readme.number) !== null && s.eventsFor(readme.number).some((e) => e.type === "quote" && e["layer"] === "laws"));
+    await s.advance(31 * DAY, DAY);
+    s.check("thirty days later the waiting entry is quoted", s.eventsFor(c.number).some((e) => e.type === "quote"));
+  }, { laws: (l) => { l.content.max_world_growth_kb_per_month = 2048; } }),
 ];

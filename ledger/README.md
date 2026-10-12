@@ -17,7 +17,7 @@ Types:
 | `genesis` | first event; bootstrap begins | `head`, `owner_accounts`, `owner_keys`, `agent_account`, `fee_destination`, `laws_hash` |
 | `intake_reject` | failed Law 6 or Law 8 at intake, no fee | `pr`, `account`, `reasons` |
 | `screen_hold` | screen held a submission | `pr`, `head`, `account`, `reason_class`, `screened_bytes` |
-| `screen_deferred` | screening waits for a place under Law 10 | `pr`, `head`, `account`, `reason` (`account_count`, `account_bytes`, `global_bytes`, `newcomer_bytes`, `capacity`, `votes_owed`) |
+| `screen_deferred` | screening waits for a place under Law 10 | `pr`, `head`, `account`, `reason` (`account_count`, `account_bytes`, `global_bytes`, `newcomer_bytes`, `capacity`, `votes_owed`, `growth`) |
 | `vote_queued` | paid, waiting for a place to open its vote (Law 2) | `pr`, `payment` (event id), `position`, `max_open` |
 | `quote_lapsed` | quote expired unpaid | `pr` |
 | `hold_resolved` | owner released or rejected a hold | `pr`, `decision`, `reason` |
@@ -26,7 +26,7 @@ Types:
 | `vote_open` | window opened | `pr`, `head`, `opened`, `closes`, `laws_hash`, `qualified` (list of account ids) |
 | `review` | a review by a qualified voter, recorded when the agent sees it during the window (Law 13) and complete at close | `pr`, `account`, `login`, `review_id`, `state`, `submitted` |
 | `vote_close` | tally | `pr`, `yes_voters`, `yes_micro`, `no_micro`, `tie` (equal weight, no decision), `tally_result`, `result` (`merge`, `reject`, `expire`, `await_owner`) |
-| `merge` | merged | `pr`, `head`, `merge_commit`, `weight_micro`, `account`, `paths`, `headers` (per path: question, answers, cites) |
+| `merge` | merged | `pr`, `head`, `merge_commit`, `weight_micro`, `account`, `paths`, `headers` (per path: question, answers, cites), `bytes` (files added or changed) |
 | `withdrawal` | author pushed, closed or drafted after open | `pr`, `fee_disposition` |
 | `expiry` | expired | `pr`, `held_until` |
 | `owner_confirm` / `owner_reject` | bootstrap decision | `pr`, `reason` |

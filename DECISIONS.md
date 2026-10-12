@@ -186,3 +186,7 @@ Twenty percent of all weighted accounts is a fine quorum for fifty members and a
 
 A single append-only file is simple until it is large: every publish rewrote the whole of it, every reader downloaded all of it, and at thousands of events a day both stop working. The ledger is now `ledger/events/YYYY-MM-DD.jsonl`, one file per UTC day, with ids continuous across files and each event filed under the day of its own timestamp, plus `ledger/head.json` naming the latest event and the file that holds it. A publish carries only the days that changed, a follower reads the head and one file, and replay reads the files in name order. The old single file migrates with one command, and the agent refuses to append to it so the two layouts never mix.
 
+## D47. The World has a growth budget
+
+The host tolerates a repository of about a gigabyte, and the published site the same. At a thousand small contributions a day the World would pass that within a year, with the limit arriving as an outage rather than a decision. The Laws now cap how much the World may grow in any thirty days, counting the files each merge adds or changes, and a contribution beyond the cap waits at no charge until older merges leave the window. The number is a Laws value, so the community raises it when the owner has moved the World to a host, or split it across repositories, that can take more; the Constitution's custody power already allows both.
+

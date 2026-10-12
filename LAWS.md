@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 10, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 11, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -57,7 +57,7 @@ Quoted fees include all applicable taxes. The agent records the Canadian-dollar 
 
 ## Law 6. What the World may contain
 
-At launch the World is **text only**: Markdown, plain text, JSON, YAML, CSV and TOML, with a maximum of **256 kilobytes** per file and **1 megabyte** per contribution. Executable code, scripts, binaries, images, SVG and HTML are not accepted in the World. The community may change this once it has voted in a review process for executables.
+At launch the World is **text only**: Markdown, plain text, JSON, YAML, CSV and TOML, with a maximum of **256 kilobytes** per file and **1 megabyte** per contribution. Executable code, scripts, binaries, images, SVG and HTML are not accepted in the World. The community may change this once it has voted in a review process for executables. The World grows by at most **65536** kilobytes in any 30 days, counting the files each merge adds or changes; a contribution beyond that waits, at no charge, until older merges leave the window.
 
 Paths may contain only ASCII letters, digits, `-`, `_`, `.` and `/`. No path component may be `.` or `..`, and no path may collide with an existing path when compared without regard to case after Unicode normalization.
 

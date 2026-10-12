@@ -248,6 +248,16 @@ export class Runtime {
       await this.d.github.close(pr.number);
       return;
     }
+    // Law 6: the World grows by at most so many kilobytes in any 30 days; beyond that a submission waits for older merges to age out.
+    const growthKb = laws.content.max_world_growth_kb_per_month;
+    if (growthKb > 0 && result.layer === "world") {
+      const incoming = files.filter((f) => f.status !== "removed").reduce((a, f) => a + f.sizeAfter, 0);
+      const used = this.worldGrowthLast30Days(now);
+      if (used + incoming > growthKb * 1024) {
+        await this.deferScreening(pr, now, "growth", `the World has grown by ${Math.ceil(used / 1024)} kB in the last 30 days and the Laws allow ${growthKb} kB (Law 6); merges older than 30 days stop counting day by day, and this submission proceeds when there is room`);
+        return;
+      }
+    }
     // Law 10: the byte budgets, per account and for everyone, with half of the total reserved for accounts that have paid before.
     let screenedBytes = 0;
     if (budget) {
@@ -316,6 +326,13 @@ export class Runtime {
       total += bytes; if (!known.has(account)) newcomers += bytes;
     }
     return { byAccount, total, newcomers, known };
+  }
+
+  /** Bytes merged into the World in the last 30 days (Law 6). */
+  private worldGrowthLast30Days(now: number): number {
+    let total = 0;
+    for (const e of this.events) if (e.type === "merge" && e["layer"] === "world" && now - e.at < 30 * 86400) total += Number(e["bytes"] ?? 0);
+    return total;
   }
 
   /** Reviews by qualified voters in the target lookback, the community's own review capacity (Law 5). */
@@ -468,11 +485,13 @@ export class Runtime {
     // Law 12: record what was merged and any headers, so questions and citations replay from the ledger alone.
     const paths: string[] = [];
     const headers: Record<string, Header> = {};
+    let bytes = 0;
     try {
       const files = await this.d.github.listFiles(pr);
       for (const f of files) {
         if (f.status === "removed") continue;
         paths.push(f.path);
+        bytes += f.sizeAfter;
         if (f.path.startsWith("world/") && f.path.toLowerCase().endsWith(".md")) {
           const h = parseHeader(await this.d.github.readFile(mergeCommit, f.path));
           if (h) headers[f.path] = h;
@@ -480,7 +499,7 @@ export class Runtime {
       }
     } catch (e) { this.log(`could not read merged files of pr ${pr}: ${(e as Error).message}`); }
     const weight = BigInt(String(quote["weight_micro"]));
-    const mergeEvent = this.d.ledger.append(now, "merge", { pr, head, merge_commit: mergeCommit, weight_micro: weight, account: author.id, login: author.login, layer: quote["layer"], paths, headers });
+    const mergeEvent = this.d.ledger.append(now, "merge", { pr, head, merge_commit: mergeCommit, weight_micro: weight, account: author.id, login: author.login, layer: quote["layer"], paths, headers, bytes });
     await this.d.github.comment(pr, (note ? note + " " : "") + `Merged as ${mergeCommit}. Weight ${micro(weight)} USDC accrues to the author and matures in ${laws.weight.maturity_days} days.`);
     // Law 12: tell the people this contribution answered or built on.
     const targets = mentionTargets(author.id, headers, this.state(now), laws.notices.mention_cap_per_merge);

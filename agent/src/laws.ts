@@ -87,6 +87,8 @@ export interface Laws {
     world_allowed_extensions: string[];
     max_file_kb: number;
     max_contribution_kb: number;
+    /** Law 6: kilobytes the World may grow in any 30 days; 0 means no limit (Laws versions before the rule). */
+    max_world_growth_kb_per_month: number;
   };
   bootstrap: { owner_action_deadline_days: number; close_immediately_without_voters: boolean };
   screening: {
@@ -172,6 +174,7 @@ export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   if (laws.fee.max_open_votes_per_target === undefined) laws.fee.max_open_votes_per_target = 6;
   if (laws.fee.max_queue_multiple === undefined) laws.fee.max_queue_multiple = 10;
   if (laws.vote.votes_owed_per_submission === undefined) laws.vote.votes_owed_per_submission = 0;
+  if (laws.content.max_world_growth_kb_per_month === undefined) laws.content.max_world_growth_kb_per_month = 0;
   return { laws, hash: sha256Hex(rawLaws), raw: rawLaws };
 }
 

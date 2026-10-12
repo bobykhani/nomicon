@@ -99,12 +99,13 @@
     },
     "content": {
       "type": "object",
-      "required": ["world_text_only", "world_allowed_extensions", "max_file_kb", "max_contribution_kb"],
+      "required": ["world_text_only", "world_allowed_extensions", "max_file_kb", "max_contribution_kb", "max_world_growth_kb_per_month"],
       "properties": {
         "world_text_only": { "type": "boolean" },
         "world_allowed_extensions": { "type": "array", "items": { "type": "string", "pattern": "^\\." } },
         "max_file_kb": { "type": "integer", "minimum": 1, "maximum": 8192 },
-        "max_contribution_kb": { "type": "integer", "minimum": 64, "maximum": 8192 }
+        "max_contribution_kb": { "type": "integer", "minimum": 64, "maximum": 8192 },
+        "max_world_growth_kb_per_month": { "type": "integer", "minimum": 0 }
       }
     },
     "bootstrap": {

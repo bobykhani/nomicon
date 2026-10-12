@@ -13,7 +13,7 @@ import { FakeChain, FakeClock, FakeDoorbell, FakeGitHub, FakeScreen, FixedOracle
 import { Notifier } from "../notifier.js";
 import { phaseOf, type Phase } from "../phases.js";
 import { replay } from "../replay.js";
-import { parseLaws } from "../laws.js";
+import { parseLaws, type Laws } from "../laws.js";
 import type { ScreenDecision, ScreenInput } from "../ports.js";
 import type { State } from "../state.js";
 import type { Review } from "../tally.js";
@@ -44,13 +44,18 @@ export class Sim {
   rt: Runtime;
   checks: Check[] = [];
   notes: string[] = [];
-  private lawsSource = { rawLaws, rawSchema };
+  private lawsSource: { rawLaws: string; rawSchema: string };
+  private lawsHashUsed: string;
 
   screen: FakeScreen;
-  constructor(opts: { holdIf?: (i: ScreenInput) => ScreenDecision | null } = {}) {
+  constructor(opts: { holdIf?: (i: ScreenInput) => ScreenDecision | null; laws?: (l: Laws) => void } = {}) {
     this.screen = new FakeScreen(opts.holdIf);
+    let raw = rawLaws;
+    if (opts.laws) { const l = JSON.parse(rawLaws) as Laws; opts.laws(l); raw = JSON.stringify(l, null, 2) + "\n"; }
+    this.lawsSource = { rawLaws: raw, rawSchema };
+    this.lawsHashUsed = parseLaws(raw, rawSchema).hash;
     this.github = new FakeGitHub(this.clock);
-    this.github.repoFiles["laws.json"] = rawLaws;
+    this.github.repoFiles["laws.json"] = this.lawsSource.rawLaws;
     this.github.repoFiles["laws.schema.json"] = rawSchema;
     this.chain = new FakeChain(this.clock);
     const { privateKey } = generateKeyPairSync("ed25519");
@@ -61,8 +66,8 @@ export class Sim {
       github: this.github, chain: this.chain, screen: this.screen, oracle: new FixedOracle(), clock: this.clock, ledger: this.ledger,
       publicBaseUrl: "https://pay.sim", loadLaws: async () => this.lawsSource, termsCommit: async () => "tt".repeat(20), notifier,
     });
-    this.ledger.append(T0, "genesis", { head: "aa".repeat(20), laws_hash: lawsHash, owner_accounts: [OWNER.id], owner_keys: [this.signer.publicKeyPem()], agent_account: 101, fee_destination: "0xdest", network: "eip155:84532" });
-    this.ledger.append(T0, "laws_snapshot", { pr: null, laws_hash: lawsHash, laws_raw: rawLaws, schema_raw: rawSchema, effective_at: T0, merge_commit: "aa".repeat(20) });
+    this.ledger.append(T0, "genesis", { head: "aa".repeat(20), laws_hash: this.lawsHashUsed, owner_accounts: [OWNER.id], owner_keys: [this.signer.publicKeyPem()], agent_account: 101, fee_destination: "0xdest", network: "eip155:84532" });
+    this.ledger.append(T0, "laws_snapshot", { pr: null, laws_hash: this.lawsHashUsed, laws_raw: this.lawsSource.rawLaws, schema_raw: rawSchema, effective_at: T0, merge_commit: "aa".repeat(20) });
   }
 
   check(claim: string, ok: boolean, detail?: string): void { this.checks.push(detail === undefined ? { claim, ok } : { claim, ok, detail }); }
@@ -141,7 +146,7 @@ export class Sim {
   }
 
   replayCheck(): void {
-    const r = replay(this.events, new Map([[lawsHash, rawLaws]]), rawSchema, this.signer.publicKeyPem(), this.clock.now());
+    const r = replay(this.events, new Map([[this.lawsHashUsed, this.lawsSource.rawLaws]]), rawSchema, this.signer.publicKeyPem(), this.clock.now());
     this.check("replay of the full ledger reproduces every recorded outcome and every signature verifies", r.ok, r.findings.map((f) => `event ${f.event}: ${f.problem}`).join("; "));
   }
 }

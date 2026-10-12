@@ -29,9 +29,33 @@ export function bytesChangedByFile(diff: string): Map<string, number> {
 
 export class GitHubAdapter implements GitHubPort {
   private octokit: Octokit;
+  /** ETag and last body per conditional request, so an unchanged answer costs no API budget (GitHub does not count 304s). */
+  private cache = new Map<string, { etag: string; data: unknown }>();
+  /** Requests left in the current hour, from the last response seen; null until one has been. */
+  rateLimitRemaining: number | null = null;
   /** `auth` is a personal token, or an Octokit already authenticated (see adapters/auth.ts for App auth). */
   constructor(private owner: string, private repo: string, auth: string | Octokit, private ledgerBranch = "main") {
     this.octokit = typeof auth === "string" ? new Octokit({ auth }) : auth;
+  }
+
+  /**
+   * One page, conditionally: send the ETag of the last answer and reuse that answer on 304.
+   * Returns the data and whether it came from the cache.
+   */
+  private async conditional<T>(key: string, request: (headers: Record<string, string>) => Promise<{ data: T; headers: Record<string, string | number | undefined> }>): Promise<{ data: T; cached: boolean }> {
+    const prev = this.cache.get(key);
+    const headers: Record<string, string> = prev ? { "if-none-match": prev.etag } : {};
+    try {
+      const res = await request(headers);
+      const remaining = res.headers["x-ratelimit-remaining"];
+      if (remaining !== undefined) this.rateLimitRemaining = Number(remaining);
+      const etag = res.headers["etag"];
+      if (typeof etag === "string") this.cache.set(key, { etag, data: res.data });
+      return { data: res.data, cached: false };
+    } catch (e) {
+      if ((e as { status?: number }).status === 304 && prev) return { data: prev.data as T, cached: true };
+      throw e;
+    }
   }
 
   private toInfo(p: { number: number; title: string; body: string | null; head: { sha: string }; base: { sha: string }; user: { id: number; login: string } | null; state: string; draft?: boolean; merged?: boolean | null; created_at: string }): PullInfo {
@@ -43,9 +67,18 @@ export class GitHubAdapter implements GitHubPort {
     };
   }
 
+  /** Open pull requests, most recently updated first. The first page is conditional: any change to any open pull request moves it there. */
   async listOpenPulls(): Promise<PullInfo[]> {
-    const pulls = await this.octokit.paginate(this.octokit.pulls.list, { owner: this.owner, repo: this.repo, state: "open", per_page: 100 });
-    return pulls.map((p) => this.toInfo(p));
+    const base = { owner: this.owner, repo: this.repo, state: "open" as const, sort: "updated" as const, direction: "desc" as const, per_page: 100 };
+    const first = await this.conditional("pulls", (headers) => this.octokit.pulls.list({ ...base, page: 1, headers }));
+    if (first.cached) return (first.data as Parameters<GitHubAdapter["toInfo"]>[0][]).map((p) => this.toInfo(p));
+    let all = first.data as Parameters<GitHubAdapter["toInfo"]>[0][];
+    if (all.length === 100) {
+      const rest = await this.octokit.paginate(this.octokit.pulls.list, { ...base, page: 2 });
+      all = all.concat(rest);
+      const c = this.cache.get("pulls"); if (c) this.cache.set("pulls", { etag: c.etag, data: all });
+    }
+    return all.map((p) => this.toInfo(p));
   }
 
   async getPull(n: number): Promise<PullInfo> {
@@ -86,7 +119,11 @@ export class GitHubAdapter implements GitHubPort {
   }
 
   async listReviews(n: number): Promise<Review[]> {
-    const reviews = await this.octokit.paginate(this.octokit.pulls.listReviews, { owner: this.owner, repo: this.repo, pull_number: n, per_page: 100 });
+    const base = { owner: this.owner, repo: this.repo, pull_number: n, per_page: 100 };
+    const first = await this.conditional(`reviews:${n}`, (headers) => this.octokit.pulls.listReviews({ ...base, page: 1, headers }));
+    type R = Awaited<ReturnType<Octokit["pulls"]["listReviews"]>>["data"];
+    let reviews = first.data as R;
+    if (!first.cached && reviews.length === 100) reviews = reviews.concat(await this.octokit.paginate(this.octokit.pulls.listReviews, { ...base, page: 2 }));
     return reviews.map((r) => ({
       reviewId: r.id, account: r.user?.id ?? 0, login: r.user?.login ?? "",
       state: r.state as Review["state"],
@@ -158,7 +195,11 @@ export class GitHubAdapter implements GitHubPort {
   }
 
   async listIssueComments(issue: number): Promise<IssueComment[]> {
-    const comments = await this.octokit.paginate(this.octokit.issues.listComments, { owner: this.owner, repo: this.repo, issue_number: issue, per_page: 100 });
+    const base = { owner: this.owner, repo: this.repo, issue_number: issue, per_page: 100 };
+    const first = await this.conditional(`comments:${issue}`, (headers) => this.octokit.issues.listComments({ ...base, page: 1, headers }));
+    type C = Awaited<ReturnType<Octokit["issues"]["listComments"]>>["data"];
+    let comments = first.data as C;
+    if (!first.cached && comments.length === 100) comments = comments.concat(await this.octokit.paginate(this.octokit.issues.listComments, { ...base, page: 2 }));
     return comments.map((c) => ({ id: c.id, account: c.user?.id ?? 0, login: c.user?.login ?? "", body: c.body ?? "", createdAt: Math.floor(Date.parse(c.created_at) / 1000) }));
   }
 
