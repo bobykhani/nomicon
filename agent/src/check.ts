@@ -24,7 +24,7 @@ export interface CheckDeps {
   dataDir: string;
   anthropicKey: boolean;
   github: () => Promise<{ id: number; login: string; detail: string }>;
-  ledgerKey: () => string;
+  ledgerKey: () => { prefix: string; matches: boolean };
   ledger: () => { agentAccount: number; destination: string; network: string } | null;
 }
 
@@ -67,7 +67,7 @@ export async function preflight(d: CheckDeps): Promise<CheckResult[]> {
   push("screen", d.anthropicKey, d.anthropicKey ? "ANTHROPIC_API_KEY is set" : "ANTHROPIC_API_KEY is not set; Law 10 screening cannot run");
   let identity: { id: number; login: string } | null = null;
   await run("github", async () => { const g = await d.github(); identity = { id: g.id, login: g.login }; return [true, g.detail]; });
-  await run("ledger key", async () => [true, `signing key loads; public key begins ${d.ledgerKey()}`]);
+  await run("ledger key", async () => { const k = d.ledgerKey(); return [k.matches, k.matches ? `signing key loads and is the key in force; public key begins ${k.prefix}` : `the configured signing key (begins ${k.prefix}) is not the key in force in the ledger; record a rotation or configure the right key`]; });
   await run("data dir", async () => { mkdirSync(d.dataDir, { recursive: true }); const p = join(d.dataDir, ".write-test"); writeFileSync(p, "ok"); rmSync(p); return [true, `${d.dataDir} is writable`]; });
   await run("ledger", async () => {
     const g = d.ledger();

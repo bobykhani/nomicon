@@ -5,7 +5,7 @@
  * why Article 11 requires every input to be recorded.
  */
 import { readFileSync } from "node:fs";
-import { verifyEvent, type LedgerEvent, readLedgerDir } from "./ledger.js";
+import { verifyLedgerSignatures, type LedgerEvent, readLedgerDir } from "./ledger.js";
 import { parseLaws, type Laws } from "./laws.js";
 import { tally, type Review } from "./tally.js";
 import { fold, type State } from "./state.js";
@@ -41,7 +41,7 @@ export function replay(events: LedgerEvent[], lawsByHash: Map<string, string>, r
     return l;
   };
   // Signatures.
-  if (publicKeyPem) for (const e of events) if (!verifyEvent(e, publicKeyPem)) findings.push({ event: e.id, problem: "bad or missing signature" });
+  if (publicKeyPem) findings.push(...verifyLedgerSignatures(events, publicKeyPem));
 
   // Walk vote_open → vote_close pairs and recompute tallies.
   const opens = new Map<number, LedgerEvent>();

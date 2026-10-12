@@ -2,7 +2,9 @@
  * Adversarial scenarios. Each one is an attack or a failure mode from the
  * hostile reviews, run against the real runtime, with explicit claims checked.
  */
-import { Sim, acct, DAY, H, rawLaws, rawSchema, type Account } from "./harness.js";
+import { Sim, acct, DAY, H, OWNER, rawLaws, rawSchema, type Account } from "./harness.js";
+import { Signer, samePem, verifyEvent, type LedgerEvent } from "../ledger.js";
+import { generateKeyPairSync } from "node:crypto";
 import type { FakePull } from "../adapters/mock.js";
 import { replay } from "../replay.js";
 import { lawsHash } from "./harness.js";
@@ -454,4 +456,29 @@ export const scenarios: Scenario[] = [
     await s.advance(31 * DAY, DAY);
     s.check("thirty days later the waiting entry is quoted", s.eventsFor(c.number).some((e) => e.type === "quote"));
   }, { laws: (l) => { l.content.max_world_growth_kb_per_month = 2048; } }),
+
+  sc("key-rotation", "The owner rotates the ledger signing key: the rotation is signed by the key in force and names the next key, which signs everything after. Replay follows the chain from the Constitution's key. A rotation signed by the wrong key, and a lost-key rotation announced less than fourteen days earlier, are both findings.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const next = new Signer(generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }) as string);
+    const rot = s.ledger.append(s.clock.now(), "key_rotation", { new_public_key: next.publicKeyPem(), commit: "cc".repeat(20), reason: "scheduled rotation", by: OWNER.id });
+    s.ledger.setSigner(next);
+    const pr = await s.submitAndVote(N, { "world/n/after-rotation.md": "x" }, [yes(H1), yes(H2), yes(H3)]);
+    s.check("a contribution merged under the new key, every event after the rotation signed by it", merged(s, pr) && s.events.filter((e) => e.id > rot.id).every((e) => verifyEvent(e, next.publicKeyPem())));
+    s.check("the state names the key in force", s.state().ledger_key !== null && samePem(String(s.state().ledger_key), next.publicKeyPem()));
+    const original = s.signer.publicKeyPem();
+    const copy = s.events.map((e) => ({ ...e }));
+    const badRot = copy.find((e) => e.id === rot.id)!;
+    badRot.sig = next.sign(badRot); // canonical JSON ignores sig
+    const r1 = replay(copy, new Map([[lawsHash, rawLaws]]), rawSchema, original, s.clock.now());
+    s.check("a rotation signed by the new key instead of the key in force is a finding", !r1.ok && r1.findings.some((f) => f.event === rot.id && f.problem.includes("not signed by the key in force")), r1.findings.map((f) => f.problem).join("; "));
+    const third = new Signer(generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }) as string);
+    const early: LedgerEvent = { id: s.events.length + 1, at: s.clock.now(), type: "key_rotation", new_public_key: third.publicKeyPem(), commit: "dd".repeat(20), announced_at: s.clock.now() - 13 * DAY, lost: true, reason: "lost", by: OWNER.id };
+    early.sig = third.sign(early);
+    const r2 = replay([...s.events, early], new Map([[lawsHash, rawLaws]]), rawSchema, original, s.clock.now());
+    s.check("a lost-key rotation thirteen days after its announcement is a finding", !r2.ok && r2.findings.some((f) => f.event === early.id && f.problem.includes("sooner than")));
+    const late: LedgerEvent = { ...early, announced_at: s.clock.now() - 15 * DAY };
+    late.sig = third.sign(late);
+    const r3 = replay([...s.events, late], new Map([[lawsHash, rawLaws]]), rawSchema, original, s.clock.now());
+    s.check("fifteen days after the announcement the new key may sign for itself", r3.ok, r3.findings.map((f) => f.problem).join("; "));
+  }),
 ];

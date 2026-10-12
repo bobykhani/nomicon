@@ -6,6 +6,10 @@ The public record. Only the enforcement agent writes here. No pull request may t
 
 One file per UTC day, `events/YYYY-MM-DD.jsonl`, named by the day of each event's `at`. Each line is one JSON object, append-only, and ids run continuously across files: the first id in a day's file follows the last id of the day before. Every object has `id` (sequential integer), `at` (UTC seconds), `type`, `sig` (signature over the canonical JSON of the object without `sig`), and type-specific fields. Formal schema in `events.schema.json`. To read the whole ledger, read the files in name order. To follow it, read `head.json`, then the file it names from the line after the last id you have.
 
+## public-key.pem
+
+The key named in Constitution Article 11, which signs the ledger from genesis. Replay starts from it and follows `key_rotation` events; `state.json` carries the key in force now as `ledger_key` once a rotation has happened.
+
 ## head.json
 
 `{ version, head_event, head_hash, segment, updated_at }`: the latest event's id, the SHA-256 over the hashes of every event in order, the day file holding it, and its time. Rewritten on every append.
@@ -35,6 +39,7 @@ Types:
 | `redaction` | content removed from ledger | `event_id`, `hash` |
 | `patch` / `deploy` | agent code | `commit`, `reason` |
 | `destination_change` | Article 7 | `destination`, `by` |
+| `key_rotation` | Article 11: the ledger signing key changes from the next event on | `new_public_key` (PEM), `commit` (owner's announcement on `main`), `reason`, `by`; after a lost key also `lost: true` and `announced_at`, and the event is signed by the new key |
 | `agent_account_change` | owner custody of the agent's platform identity (Article 6), e.g. moving to a GitHub App or to a successor operator | `agent_account`, `login`, `reason`, `by` |
 | `declare` | bootstrap end, maintenance window | `what`, `constitution_hashes` |
 | `correction` | replay found an error | `event_id`, `evidence` |

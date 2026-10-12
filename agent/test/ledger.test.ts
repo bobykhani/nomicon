@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Ledger, Signer, canonical, parseEvents, readLedgerDir, segmentOf, verifyEvent } from "../src/ledger.js";
+import { Ledger, ROTATION_WAIT_DAYS, Signer, canonical, keyInForce, parseEvents, readLedgerDir, segmentOf, verifyEvent, verifyLedgerSignatures } from "../src/ledger.js";
 
 const { privateKey } = generateKeyPairSync("ed25519");
 const pem = privateKey.export({ type: "pkcs8", format: "pem" }) as string;
@@ -75,5 +75,33 @@ describe("ledger", () => {
     expect(led.head).toBe(3);
     led.append(t0 + 2 * DAY, "fee_adjust", {});
     expect(JSON.parse(readFileSync(join(dir, "head.json"), "utf8")).head_event).toBe(4);
+  });
+});
+
+describe("key rotation", () => {
+  const key = () => new Signer(generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }) as string);
+  const signed = (signer: Signer, e: Omit<import("../src/ledger.js").LedgerEvent, "sig">) => ({ ...e, sig: signer.sign(e as import("../src/ledger.js").LedgerEvent) });
+  it("follows a planned rotation and flags events signed by the wrong key", () => {
+    const a = key(), b = key();
+    const events = [
+      signed(a, { id: 1, at: 100, type: "genesis" }),
+      signed(a, { id: 2, at: 200, type: "key_rotation", new_public_key: b.publicKeyPem(), commit: "c", reason: "r", by: "1" }),
+      signed(b, { id: 3, at: 300, type: "fee_adjust" }),
+    ];
+    expect(verifyLedgerSignatures(events, a.publicKeyPem())).toEqual([]);
+    expect(keyInForce(events, a.publicKeyPem())).toBe(b.publicKeyPem());
+    const wrong = [...events, signed(a, { id: 4, at: 400, type: "fee_adjust" })];
+    expect(verifyLedgerSignatures(wrong, a.publicKeyPem())).toEqual([{ event: 4, problem: "bad or missing signature" }]);
+    const stolen = [events[0]!, signed(b, { id: 2, at: 200, type: "key_rotation", new_public_key: b.publicKeyPem(), commit: "c", reason: "r", by: "1" })];
+    expect(verifyLedgerSignatures(stolen, a.publicKeyPem()).map((f) => f.problem)).toEqual(["rotation not signed by the key in force"]);
+  });
+  it("accepts a lost-key rotation only after the waiting period, signed by the new key", () => {
+    const a = key(), b = key();
+    const wait = ROTATION_WAIT_DAYS * 86400;
+    const base = [signed(a, { id: 1, at: 100, type: "genesis" })];
+    const ok = [...base, signed(b, { id: 2, at: 100 + wait, type: "key_rotation", new_public_key: b.publicKeyPem(), commit: "c", announced_at: 100, lost: true, reason: "lost", by: "1" })];
+    expect(verifyLedgerSignatures(ok, a.publicKeyPem())).toEqual([]);
+    const early = [...base, signed(b, { id: 2, at: 99 + wait, type: "key_rotation", new_public_key: b.publicKeyPem(), commit: "c", announced_at: 100, lost: true, reason: "lost", by: "1" })];
+    expect(verifyLedgerSignatures(early, a.publicKeyPem()).map((f) => f.problem)).toEqual([expect.stringContaining("sooner than")]);
   });
 });

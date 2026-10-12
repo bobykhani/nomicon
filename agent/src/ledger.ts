@@ -9,7 +9,7 @@ import { join } from "node:path";
 export type EventType =
   | "genesis" | "intake_reject" | "screen_hold" | "hold_resolved" | "quote" | "quote_lapsed" | "payment" | "vote_open" | "review"
   | "vote_close" | "merge" | "withdrawal" | "expiry" | "owner_confirm" | "owner_reject" | "fee_adjust"
-  | "takedown" | "redaction" | "patch" | "deploy" | "destination_change" | "agent_account_change" | "screen_deferred" | "vote_queued" | "declare" | "correction" | "refusal"
+  | "takedown" | "redaction" | "patch" | "deploy" | "destination_change" | "agent_account_change" | "screen_deferred" | "vote_queued" | "key_rotation" | "declare" | "correction" | "refusal"
   | "laws_snapshot" | "owner_action_applied" | "channel" | "notice" | "digest";
 
 export interface LedgerEvent {
@@ -37,6 +37,43 @@ export class Signer {
   constructor(privateKeyPem: string) { this.key = createPrivateKey(privateKeyPem); }
   publicKeyPem(): string { return createPublicKey(this.key).export({ type: "spki", format: "pem" }) as string; }
   sign(e: LedgerEvent): string { return edSign(null, Buffer.from(canonical(e)), this.key).toString("base64"); }
+}
+
+/** Article 11: days an announced replacement for a lost key must wait before the new key may sign. */
+export const ROTATION_WAIT_DAYS = 14;
+
+const normPem = (s: string) => s.replace(/\r/g, "").trim();
+export function samePem(a: string, b: string): boolean { return normPem(a) === normPem(b); }
+
+/** The signing key in force after these events, following rotations from the key named in the Constitution. */
+export function keyInForce(events: LedgerEvent[], initialPem: string): string {
+  let current = initialPem;
+  for (const e of events) if (e.type === "key_rotation" && typeof e["new_public_key"] === "string") current = e["new_public_key"];
+  return current;
+}
+
+/**
+ * Verify every signature, following the chain of rotations: a rotation is
+ * signed by the key in force, or, after a lost key, by the new key itself
+ * no sooner than ROTATION_WAIT_DAYS after the announcement it cites.
+ */
+export function verifyLedgerSignatures(events: LedgerEvent[], initialPem: string): Array<{ event: number; problem: string }> {
+  const findings: Array<{ event: number; problem: string }> = [];
+  let current = initialPem;
+  for (const e of events) {
+    if (e.type === "key_rotation") {
+      const next = typeof e["new_public_key"] === "string" ? e["new_public_key"] : "";
+      if (!next.includes("BEGIN PUBLIC KEY")) { findings.push({ event: e.id, problem: "key rotation names no public key" }); continue; }
+      if (e["lost"] === true) {
+        if (!(e.at - Number(e["announced_at"]) >= ROTATION_WAIT_DAYS * 86400)) findings.push({ event: e.id, problem: `rotation after a lost key sooner than ${ROTATION_WAIT_DAYS} days after its announcement` });
+        if (!verifyEvent(e, next)) findings.push({ event: e.id, problem: "rotation after a lost key not signed by the new key" });
+      } else if (!verifyEvent(e, current)) findings.push({ event: e.id, problem: "rotation not signed by the key in force" });
+      current = next;
+      continue;
+    }
+    if (!verifyEvent(e, current)) findings.push({ event: e.id, problem: "bad or missing signature" });
+  }
+  return findings;
 }
 
 export function verifyEvent(e: LedgerEvent, publicKeyPem: string): boolean {
@@ -109,6 +146,8 @@ export class Ledger {
     for (const e of readLedgerDir(dir)) this.adopt(e);
   }
   get head(): number { return this.events.length; }
+  /** After a rotation, sign with the new key. */
+  setSigner(signer: Signer): void { this.signer = signer; }
   private segmentPath(name: string): string { return join(this.dir, "events", name + ".jsonl"); }
 
   private adopt(e: LedgerEvent): void {

@@ -48,7 +48,7 @@ Code under `agent/` is Laws-layer. A change reaches the server only after it mer
 
 Nightly, to a different machine or an encrypted bucket: `/srv/nomicon/private`, `/srv/nomicon/secrets` (encrypted with a key held by the owner), and `/srv/nomicon/repo/ledger`. Test a restore once: a fresh server, restore the three paths, `git pull`, `replay`, start.
 
-The Constitution names one ledger signing key and provides no way to replace it, so losing `ledger.pem` means the ledger cannot be continued under the rules as written. Keep two encrypted copies in two places. Loss of `github-app.pem` means generating a new key on the App's page; loss of `doorbells.json` means every doorbell goes silent until accounts re-register, which the next digest should tell them.
+**Rotating the ledger key** (Article 11). Planned: generate a new pair with `keygen`, commit the new public key to `main` from an owner account with a message that announces it, then `node dist/cli.js rotate-key <new-public.pem> <that commit> "<reason>"` while the old key is still configured; switch `NOMICON_LEDGER_KEY` to the new private key and restart. The agent refuses to run with any key other than the one in force. Lost: commit the announcement the same way, wait fourteen days, then `node dist/cli.js rotate-key-lost <new-private.pem> <commit> <announcement time> "<reason>"`, which signs the rotation with the new key. Keep two encrypted copies of the key in two places anyway; fourteen days of silence is the cost of losing it. Loss of `github-app.pem` means generating a new key on the App's page; loss of `doorbells.json` means every doorbell goes silent until accounts re-register, which the next digest should tell them.
 
 ## Handing over
 

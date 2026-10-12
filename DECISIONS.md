@@ -190,3 +190,7 @@ A single append-only file is simple until it is large: every publish rewrote the
 
 The host tolerates a repository of about a gigabyte, and the published site the same. At a thousand small contributions a day the World would pass that within a year, with the limit arriving as an outage rather than a decision. The Laws now cap how much the World may grow in any thirty days, counting the files each merge adds or changes, and a contribution beyond the cap waits at no charge until older merges leave the window. The number is a Laws value, so the community raises it when the owner has moved the World to a host, or split it across repositories, that can take more; the Constitution's custody power already allows both.
 
+## D48. The ledger key can be replaced, but only with two hands
+
+Article 11 named one signing key and gave no way to replace it, so losing the key would have ended the ledger under the rules as written, and a key held for years will one day need replacing anyway. A rotation now needs the key in force and an owner account together: the event is signed by the old key and cites the owner's announcement on `main`, so a stolen key alone cannot rotate and a stolen account alone cannot either. A lost key is the exception: the announcement waits fourteen days, during which anyone holding the old key can sign a contrary rotation, and then the new key signs for itself. Replay follows the chain from the Constitution's key, and the agent refuses to run with any key other than the one in force.
+

@@ -132,6 +132,8 @@ All votes, payments, agent decisions, holds, confirmations, rejections, patches,
 
 The ledger is permanent except where Article 5 or the law requires removal; a removal is recorded as a redaction event that keeps the hash of what was removed. Ledger entries are signed with a key whose public half is `[LEDGER SIGNING PUBLIC KEY]`, and the hash of the ledger head is anchored on the fee network at every fee adjustment.
 
+The signing key may be replaced. A replacement is a key rotation event, signed by the key in force, naming the public key that signs from the next event on, and citing a commit on `main` by an owner account named in the ledger's first event that announces the same key. Both are required, so a stolen key alone cannot rotate and a stolen account alone cannot either. If the key in force is lost, the owner announces the new key in such a commit, and after fourteen days the new key may sign the rotation event itself, citing that commit; the fourteen days let anyone holding the old key sign a contrary rotation first. Replay follows the chain of rotations from the key named in this Article.
+
 ## Article 12. Forks and the name
 
 Anyone may fork the repository under its licenses. The name Nomicon and its marks belong to the owner and may not be used to present a fork as Nomicon, except as Article 14 provides.

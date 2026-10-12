@@ -21,6 +21,8 @@ export interface State {
   open_votes: OpenVote[];
   held_fees: HeldFee[];
   deployed_agent: string | null;
+  /** Public key signing the ledger now, after any rotation; null until a rotation (then the Constitution's key). */
+  ledger_key: string | null;
   /** Internal bookkeeping needed to continue folding; included in state.json for transparency. */
   merges: Array<{ pr: number; account: number; mergedAt: number; weightMicro: bigint; revoked?: boolean }>;
   logins: Record<string, string>;
@@ -43,7 +45,7 @@ export function emptyState(): State {
     version: 2, computed_at: null, head_event: 0,
     bootstrap: { active: false, began: null, ends_by: null },
     fee: { base_micro: 1_000_000n, destination: null, last_adjusted_at: null },
-    weights: {}, weighted_accounts: 0, open_votes: [], held_fees: [], deployed_agent: null,
+    weights: {}, weighted_accounts: 0, open_votes: [], held_fees: [], deployed_agent: null, ledger_key: null,
     merges: [], logins: {}, last_vote_at: {}, owner_accounts: [], agent_account: null, barred_until: {}, pr_account: {}, path_author: {}, questions: {}, channels: {},
   };
 }
@@ -131,6 +133,9 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       break;
     case "deploy":
       s.deployed_agent = String(e["commit"]);
+      break;
+    case "key_rotation":
+      s.ledger_key = typeof e["new_public_key"] === "string" ? e["new_public_key"] : s.ledger_key;
       break;
     case "declare":
       if (e["what"] === "bootstrap_end") s.bootstrap.active = false;

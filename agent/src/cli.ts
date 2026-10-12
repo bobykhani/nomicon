@@ -35,7 +35,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Ledger, Signer } from "./ledger.js";
+import { Ledger, ROTATION_WAIT_DAYS, Signer, keyInForce, samePem } from "./ledger.js";
 import { replayFromFiles } from "./replay.js";
 import { Runtime } from "./runtime.js";
 import { FileDoorbellStore, GitHubAdapter, HttpDoorbell } from "./adapters/github.js";
@@ -63,6 +63,40 @@ function signer(): Signer {
   return new Signer(pem);
 }
 function ledger(): Ledger { return new Ledger(resolve(root(), "ledger"), signer()); }
+
+/** The public key signing the ledger now: the Constitution's key (ledger/public-key.pem) followed through rotations. */
+function ledgerKeyInForce(led: Ledger): { inForce: string; configured: string; matches: boolean } {
+  const p = resolve(root(), "ledger/public-key.pem");
+  const initial = existsSync(p) ? readFileSync(p, "utf8") : signer().publicKeyPem();
+  const inForce = keyInForce(led.events, initial), configured = signer().publicKeyPem();
+  return { inForce, configured, matches: samePem(inForce, configured) };
+}
+
+/** Article 11: rotate the ledger signing key. Planned rotations are signed by the key in force; after a lost key the new key signs after the waiting period. */
+async function rotateKey(args: string[], lost: boolean): Promise<void> {
+  const led = ledger();
+  const by = env("NOMICON_OWNER_ACCOUNTS").split(",")[0]!;
+  if (!lost) {
+    const [pubPath, commit, ...rest] = args;
+    if (!pubPath || !commit || !rest.length) throw new Error('usage: nomicon rotate-key <new-public-key.pem> <announcing commit sha> "<reason>"');
+    const k = ledgerKeyInForce(led);
+    if (!k.matches) throw new Error("the configured NOMICON_LEDGER_KEY is not the key in force; the key in force must sign a planned rotation");
+    const next = readFileSync(pubPath, "utf8");
+    if (!next.includes("BEGIN PUBLIC KEY")) throw new Error(`${pubPath} is not a public key PEM`);
+    const e = led.append(now(), "key_rotation", { new_public_key: next, commit, reason: rest.join(" "), by });
+    console.log(`recorded event ${e.id}: key_rotation. Switch NOMICON_LEDGER_KEY to the new private key and restart the agent; the old key signs nothing from now on.`);
+    return;
+  }
+  const [privPath, commit, announced, ...rest] = args;
+  if (!privPath || !commit || !announced || !rest.length) throw new Error('usage: nomicon rotate-key-lost <new-private-key.pem> <announcing commit sha> <announcement time, ISO 8601> "<reason>"');
+  const announcedAt = Math.floor(Date.parse(announced) / 1000);
+  if (!Number.isFinite(announcedAt)) throw new Error("announcement time must be ISO 8601");
+  if (now() - announcedAt < ROTATION_WAIT_DAYS * 86400) throw new Error(`the announcement must be at least ${ROTATION_WAIT_DAYS} days old; it is ${Math.floor((now() - announcedAt) / 86400)} days`);
+  const next = new Signer(readFileSync(privPath, "utf8"));
+  const l = new Ledger(resolve(root(), "ledger"), next);
+  const e = l.append(now(), "key_rotation", { new_public_key: next.publicKeyPem(), commit, announced_at: announcedAt, lost: true, reason: rest.join(" "), by });
+  console.log(`recorded event ${e.id}: key_rotation after a lost key. Set NOMICON_LEDGER_KEY to ${privPath} and restart the agent.`);
+}
 
 /** The agent account in force: genesis, then any owner change of custody (Article 6). */
 function agentAccountInForce(events: Ledger["events"]): number | null {
@@ -156,10 +190,12 @@ async function main(argv: string[]): Promise<void> {
     }
     case "run": return run();
     case "record-payment": return recordPayment(Number(args[0]), args[1] ?? "");
+    case "rotate-key": return rotateKey(args, false);
+    case "rotate-key-lost": return rotateKey(args, true);
     case "migrate-ledger": { const n = Ledger.migrate(resolve(root(), "ledger")); console.log(`moved ${n} events into ledger/events/ by day; head.json written; events.jsonl removed`); return; }
     case "check": return check();
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check|migrate-ledger>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check|migrate-ledger|rotate-key|rotate-key-lost>");
       process.exitCode = 1;
   }
 }
@@ -187,6 +223,8 @@ async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseCh
   const network = env("NOMICON_NETWORK", "eip155:84532") as Network;
   const { github, identity } = await githubFromEnv();
   const led = ledger();
+  const key = ledgerKeyInForce(led);
+  if (!key.matches) throw new Error("NOMICON_LEDGER_KEY is not the ledger signing key in force (Article 11); record a rotation with `nomicon rotate-key`, or configure the key the ledger names");
   const agentAccount = agentAccountInForce(led.events);
   if (agentAccount !== null && agentAccount !== identity.id) throw new Error(`GitHub identity ${identity.login} (${identity.id}) is not the agent account ${agentAccount} in force in the ledger; quotes would come from the wrong account. If the agent's identity changed on purpose, record it with \`nomicon set-agent-account "<reason>"\``);
   const log = (m: string) => console.log(new Date().toISOString(), m);
@@ -241,7 +279,7 @@ async function check(): Promise<void> {
     allowPrivate: process.env["NOMICON_DOORBELL_ALLOW_PRIVATE"] === "1", dataDir: env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private")),
     anthropicKey: !!process.env["ANTHROPIC_API_KEY"],
     github: async () => { const { github, identity } = await githubFromEnv(); const pulls = await github.listOpenPulls(); return { ...identity, detail: `${identity.login} (${identity.id}), ${pulls.length} open pull request(s) readable` }; },
-    ledgerKey: () => { const s = signer(); return s.publicKeyPem().split("\n")[1]?.slice(0, 16) ?? ""; },
+    ledgerKey: () => { const k = ledgerKeyInForce(ledger()); return { prefix: k.configured.split("\n")[1]?.slice(0, 16) ?? "", matches: k.matches }; },
     ledger: () => { const l = ledger(); const g = l.events.find((e) => e.type === "genesis"); return g ? { agentAccount: agentAccountInForce(l.events) ?? Number(g["agent_account"]), destination: replayFromFiles(root(), now()).state.fee.destination ?? String(g["fee_destination"]), network: String(g["network"]) } : null; },
   });
   let failed = 0;
