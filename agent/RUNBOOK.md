@@ -48,6 +48,7 @@ Every command runs on the server with the agent's environment. With Docker: `doc
 | `rotate-destination <address> "<reason>"` | Article 7: the fee destination from now on. |
 | `set-agent-account "<reason>"` | Article 6: the agent now acts as the GitHub identity its credentials resolve to. |
 | `name-owner <account id> "<reason>"` | Article 6: adds an owner account, effective fourteen days later. |
+| `amend-terms <commit> "<provision>"` | Article 13, after bootstrap only: records a legally required change to `TERMS.md`, citing the statute, regulation or decision; effective thirty days later, for new quotes only. Commit the new text to `main` first and pass its full hash. |
 | `rotate-key <new-public.pem> <commit> "<reason>"` / `rotate-key-lost <new-private.pem> <tx hash> "<reason>"` | Article 11. See Rotating the ledger key. |
 | `maintenance <hours> "<reason>"` | Article 14: declares a maintenance window in advance. |
 | `deploy <commit> "<reason>"` / `patch <commit> "<reason>"` / `amend-laws "<reason>"` / `end-bootstrap "<reason>"` | Article 8 and Article 3 records. |

@@ -18,6 +18,7 @@
  *   deploy <commit> <reason>
  *   patch <commit> <reason>
  *   amend-laws <reason>            bootstrap only: bring the repository's current laws.json into force now (Article 3)
+ *   amend-terms <commit> <provision>  after bootstrap only: record a legally required change to TERMS.md (Article 13), effective 30 days later
  *
  * Environment: NOMICON_REPO_ROOT, NOMICON_LEDGER_KEY (pkcs8 pem or path),
  * GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY (pem or path) [+ GITHUB_APP_INSTALLATION_ID] for the agent's own
@@ -48,6 +49,7 @@ import { BankOfCanadaOracle } from "./adapters/oracle.js";
 import { preflight } from "./check.js";
 import { loadLaws, sha256Hex } from "./laws.js";
 import { phaseOf } from "./phases.js";
+import { TERMS_AMENDMENT_NOTICE_DAYS, termsCommitAt } from "./terms.js";
 import type { PriceOracle } from "./ports.js";
 
 const env = (k: string, def?: string): string => {
@@ -199,6 +201,18 @@ async function main(argv: string[]): Promise<void> {
       console.log(`laws ${hash.slice(0, 12)} in force now as event ${e.id} (owner amendment during bootstrap)`);
       return;
     }
+    case "amend-terms": {
+      const commit = (args[0] ?? "").toLowerCase(), provision = args.slice(1).join(" ").trim();
+      if (!/^[0-9a-f]{40}$/.test(commit) || !provision) throw new Error('usage: nomicon amend-terms <full commit of the new TERMS.md on main> "<the statute, regulation or decision that requires it>"');
+      const l = ledger();
+      if (!l.events.some((e) => e.type === "declare" && e["what"] === "bootstrap_end")) throw new Error("bootstrap has not ended; amend TERMS.md directly under Article 3");
+      const previous = termsCommitAt(l.events, now(), env("NOMICON_TERMS_COMMIT", "main"));
+      if (previous === commit) throw new Error("that commit is already the Terms in force");
+      const effective_at = now() + TERMS_AMENDMENT_NOTICE_DAYS * 86400;
+      ownerCommand("declare", { what: "terms_amendment", commit, previous_commit: previous, provision, effective_at });
+      console.log(`TERMS.md at ${commit.slice(0, 12)} takes effect at ${new Date(effective_at * 1000).toISOString()} for quotes issued after that; quotes until then cite ${previous.slice(0, 12)}`);
+      return;
+    }
     case "run": return run();
     case "record-payment": return recordPayment(Number(args[0]), args[1] ?? "");
     case "lift-bar": {
@@ -217,7 +231,7 @@ async function main(argv: string[]): Promise<void> {
     case "migrate-ledger": { const n = Ledger.migrate(resolve(root(), "ledger")); console.log(`moved ${n} events into ledger/events/ by day; head.json written; events.jsonl removed`); return; }
     case "check": return check();
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check|migrate-ledger|rotate-key|rotate-key-lost|lift-bar|name-owner|pending>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|amend-terms|record-payment|check|migrate-ledger|rotate-key|rotate-key-lost|lift-bar|name-owner|pending>");
       process.exitCode = 1;
   }
 }
@@ -267,7 +281,7 @@ async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseCh
     github, chain, screen: new ClaudeScreen(process.env["NOMICON_SCREEN_MODEL"] || undefined), oracle, clock: { now }, ledger: led, publicBaseUrl, notifier,
     ...(process.env["NOMICON_TAX_INCLUDED"] ? { tax: { included: process.env["NOMICON_TAX_INCLUDED"], registration: process.env["NOMICON_TAX_REGISTRATION"] ?? "none" } } : {}),
     loadLaws: async () => ({ rawLaws: await github.readFile("main", "laws.json"), rawSchema: await github.readFile("main", "laws.schema.json") }),
-    termsCommit: async () => env("NOMICON_TERMS_COMMIT", "main"),
+    termsCommit: async () => termsCommitAt(led.events, now(), env("NOMICON_TERMS_COMMIT", "main")),
     log,
   });
   return { rt, led, chain, network, log, publicBaseUrl, trustProxy };

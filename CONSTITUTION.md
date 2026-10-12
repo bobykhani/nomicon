@@ -68,6 +68,7 @@ The owner is SAPIA TECHNOLOGIES INC., a corporation under the laws of Ontario, C
 - deploying and patching the enforcement agent under Article 8;
 - the bootstrap powers in Article 3;
 - maintaining `NOTICES.md` and `PRIVACY.md`;
+- amending `TERMS.md` after bootstrap only where the law requires it, as Article 13 allows;
 - naming replacement or additional owner accounts and keys by a command recorded in the ledger from an account or key then in force, effective fourteen days after it is recorded;
 - the duties in Article 14.
 
@@ -142,7 +143,7 @@ Anyone may fork the repository under its licenses. The name Nomicon and its mark
 
 ## Article 13. Amendment
 
-The Laws change only by the Laws procedure. After bootstrap, this Constitution and the other files of its layer cannot be amended in this repository by anyone. Copies in forks may be altered under their licences, but a fork whose Constitution differs from this one other than as Article 14 allows is not Nomicon.
+The Laws change only by the Laws procedure. After bootstrap, this Constitution and the other files of its layer cannot be amended in this repository by anyone, with one exception. Where a statute, a regulation, or a decision of a court or regulator with jurisdiction over the owner requires a change to `TERMS.md`, the owner may make the smallest change that satisfies it. The owner records the change in the ledger, citing the provision that requires it and the commit holding the new text, and the change takes effect thirty days later, for quotes issued after that moment only; a quote issued before it cites the earlier text and is governed by it. Such a change may not alter any rule of this Constitution or of the Laws, the licences of Article 10, or what the Terms say about fees, votes, weight, removal or continuity, and may not add an obligation on contributors beyond what the cited provision requires. Anyone may compare the two texts against the cited provision; a change that goes further than the provision requires is outside the owner's powers and void. Copies in forks may be altered under their licences, but a fork whose Constitution differs from this one other than as Article 14 allows is not Nomicon.
 
 ## Article 14. Continuity
 
@@ -150,4 +151,4 @@ A lapse occurs when either of these holds and no maintenance window the owner de
 
 After a lapse, any contributor may give notice by opening an unpaid pull request titled "Continuity notice" that records the evidence, and by writing to the contact address in `NOTICES.md`. If thirty days after that notice no decision has been recorded in the ledger, contributors may elect a successor operator on that pull request by the Laws procedure, without fee, using the weights in the last published `ledger/state.json`. Any contributor may tally the election with the replay tool; the earliest valid passing election wins, and the tally with its inputs is the first event in the successor's ledger.
 
-The owner grants now, irrevocably and royalty-free, to whichever operator is so elected, a licence to use the name Nomicon for the elected fork, conditional on the fork being operated under this Constitution and these Terms, and ending if it is not. The successor's copies of this Constitution and of `TERMS.md` differ from the originals only by naming the successor as owner and by stating its contact address, its fee destination and its keys. Those substitutions are the only amendments Article 13 permits, and only in that fork. The original owner's fee wallet remains the original owner's.
+The owner grants now, irrevocably and royalty-free, to whichever operator is so elected, a licence to use the name Nomicon for the elected fork, conditional on the fork being operated under this Constitution and these Terms, and ending if it is not. The successor's copies of this Constitution and of `TERMS.md` differ from the originals only by naming the successor as owner and by stating its contact address, its fee destination and its keys. Those substitutions, and the legally required changes Article 13 allows, are the only amendments permitted, and the substitutions only in that fork. The original owner's fee wallet remains the original owner's.

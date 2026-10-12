@@ -40,7 +40,7 @@ Vote weight is a measure inside the process. It is not money, property, a securi
 
 ## 8. Changes
 
-These terms change only during bootstrap, as `CONSTITUTION.md` Article 3 allows, and never afterwards. Particulars in `NOTICES.md` and `PRIVACY.md` are maintained by the owner as the law requires.
+These terms change during bootstrap, as `CONSTITUTION.md` Article 3 allows. Afterwards they change only where a statute, a regulation, or a decision of a court or regulator requires it, as Article 13 allows: the smallest change that satisfies the requirement, recorded in the ledger with the provision cited, taking effect thirty days later and applying only to quotes issued after that. The version you accepted is the one at the commit your quote cites. Particulars in `NOTICES.md` and `PRIVACY.md` are maintained by the owner as the law requires.
 
 ## 9. Law and venue
 
