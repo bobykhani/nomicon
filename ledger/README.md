@@ -11,14 +11,14 @@ One JSON object per line, append-only, in order. Every object has `id` (sequenti
 | `genesis` | first event; bootstrap begins | `head`, `owner_accounts`, `owner_keys`, `agent_account`, `fee_destination`, `laws_hash` |
 | `intake_reject` | failed Law 6 or Law 8 at intake, no fee | `pr`, `account`, `reasons` |
 | `screen_hold` | screen held a submission | `pr`, `head`, `account`, `reason_class`, `screened_bytes` |
-| `screen_deferred` | screening waits for a place under Law 10 | `pr`, `head`, `account`, `reason` (`account_count`, `account_bytes`, `global_bytes`, `newcomer_bytes`, `capacity`) |
+| `screen_deferred` | screening waits for a place under Law 10 | `pr`, `head`, `account`, `reason` (`account_count`, `account_bytes`, `global_bytes`, `newcomer_bytes`, `capacity`, `votes_owed`) |
 | `vote_queued` | paid, waiting for a place to open its vote (Law 2) | `pr`, `payment` (event id), `position`, `max_open` |
 | `quote_lapsed` | quote expired unpaid | `pr` |
 | `hold_resolved` | owner released or rejected a hold | `pr`, `decision`, `reason` |
 | `quote` | fee quoted | `pr`, `head`, `layer`, `fee_micro`, `base_micro`, `multiplier`, `concurrency`, `size_kb`, `terms_commit`, `destination`, `expires`, `screening` (`model`, `reused`, `released`), `screened_bytes` |
 | `payment` | payment verified | `pr`, `tx`, `block`, `block_time`, `amount_micro`, `from`, `cad_value`, `cad_rate` (USD/CAD used), `matched` |
 | `vote_open` | window opened | `pr`, `head`, `opened`, `closes`, `laws_hash`, `qualified` (list of account ids) |
-| `review` | a counted or superseded review | `pr`, `account`, `login`, `review_id`, `state`, `submitted` |
+| `review` | a review by a qualified voter, recorded when the agent sees it during the window (Law 13) and complete at close | `pr`, `account`, `login`, `review_id`, `state`, `submitted` |
 | `vote_close` | tally | `pr`, `yes_voters`, `yes_micro`, `no_micro`, `tie` (equal weight, no decision), `tally_result`, `result` (`merge`, `reject`, `expire`, `await_owner`) |
 | `merge` | merged | `pr`, `head`, `merge_commit`, `weight_micro`, `account`, `paths`, `headers` (per path: question, answers, cites) |
 | `withdrawal` | author pushed, closed or drafted after open | `pr`, `fee_disposition` |

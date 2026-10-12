@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 8, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 9, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -47,7 +47,7 @@ The fee for a contribution is:
 - **Concurrency.** An account's k-th simultaneously open paid submission costs 2^(k−1) times the base.
 - **Size component.** **0.05 USDC** per kilobyte of 1024 bytes added or modified in the diff beyond the first **8 kilobytes**.
 
-A **quote** is issued when the screen passes and is valid for **24 hours**. While more than **10** times the number of votes that may be open are paid and waiting, no new quote is issued; a submission then waits, at no charge, and is quoted as the queue shortens, oldest first. A submission unpaid when its quote lapses is closed; it may request a new quote. The quote cites the commit of `TERMS.md` being accepted.
+A **quote** is issued when the screen passes and Law 13 is satisfied, and is valid for **24 hours**. While more than **10** times the number of votes that may be open are paid and waiting, no new quote is issued; a submission then waits, at no charge, and is quoted as the queue shortens, oldest first. A submission unpaid when its quote lapses is closed; it may request a new quote. The quote cites the commit of `TERMS.md` being accepted.
 
 A **payment** counts once. It must be at least the quoted amount, in USDC on Base via the x402 protocol, to the destination in force under Constitution Article 7, carrying the pull request number in the x402 payment payload as `agent/PROTOCOL.md` specifies. Arrival is judged by the block timestamp on the fee network, and a quote's validity is extended by any outage the agent records. A payment that matches no open quote, and any amount above the quote, is not refunded. A payment from an address the owner identifies as subject to Canadian or United States sanctions is not accepted; the contribution does not proceed, and the owner handles the funds as the law requires, recording the event.
 
@@ -105,4 +105,8 @@ Nothing in it is required. A file that sets `question` asks one; its path is the
 An account may register a **doorbell** by commenting `doorbell: <https address>` on the issue named in `NOTICES.md`, and withdraw it with `doorbell: off`. The latest comment per account counts. The agent delivers to a registered doorbell every ledger event that concerns the account, signed with the ledger key, retrying **3** times; after **30** consecutive failed deliveries the doorbell is retired and the account is told by mention. The address lives only in the agent's private store; the ledger records a hash and every delivery attempt.
 
 The agent publishes a feed of ledger events and the questions index at the endpoints in `agent/PROTOCOL.md`, records which accounts watch the repository, and every **7** days posts a digest as a discussion: merges, votes closing soon, new and unanswered questions, and the leaderboard.
+
+## Law 13. Reciprocity
+
+An account that is qualified to vote receives a new quote only after it has voted on **3** open contributions it qualifies for, counting from its previous quote. A vote of either kind counts, and a vote on one contribution counts once. If fewer than that many such contributions are open, the requirement is reduced to the number that are. An account whose weight has not matured owes nothing. The agent records each vote in the ledger when it sees it, and tells an account what it owes.
 

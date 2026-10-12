@@ -414,4 +414,30 @@ export const scenarios: Scenario[] = [
     s.check("when the first eighteen closed, the next eighteen opened in payment order", s.state().open_votes.length === 18 && JSON.stringify(opened.slice(-18)) === JSON.stringify(prs.slice(18, 36).map((p) => p.number)), String(s.state().open_votes.length));
     s.check("the first eighteen expired unreviewed with their fees held, nothing merged", prs.slice(0, 18).every((p) => s.eventsFor(p.number).some((e) => e.type === "expiry")) && s.github.merges.length === 3);
   }),
+
+  sc("reciprocity", "A member who can vote submits again while three votes are open: the quote waits until they have voted on all three, either way. An account whose weight has not matured owes nothing, and when nothing is open nothing is owed.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const first = await s.submitAndVote(N, { "world/n/first.md": "first" }, [yes(H1), yes(H2), yes(H3)]);
+    s.check("the member's first entry merged", merged(s, first));
+    await s.advance(31 * DAY, DAY);
+    const others: FakePull[] = [];
+    for (const x of [X1, X2, X3]) { const p = await s.submit(x, { [`world/x/${x.login}.md`]: "entry" }); await s.pay(p.number); others.push(p); }
+    await s.tick();
+    s.check("three votes are open that the member qualifies for", s.state().open_votes.length === 3 && s.state().open_votes.every((v) => v.qualified.includes(N.id)));
+    const callsBefore = s.screen.calls;
+    const again = await s.submit(N, { "world/n/second.md": "second" });
+    s.check("the member's next submission waits for three votes, told once with examples, and is not screened meanwhile", s.rt.quoteFor(again.number) === null && s.eventsFor(again.number).some((e) => e.type === "screen_deferred" && e["reason"] === "votes_owed") && again.comments.filter((c) => c.includes("owes 3 votes")).length === 1 && s.screen.calls === callsBefore);
+    s.clock.advance(H);
+    s.review(others[0]!.number, N, "APPROVED"); await s.tick();
+    s.check("one vote is recorded in the ledger as cast, before any window closes", s.events.some((e) => e.type === "review" && e["account"] === N.id && e["pr"] === others[0]!.number) && s.rt.quoteFor(again.number) === null);
+    s.review(others[1]!.number, N, "CHANGES_REQUESTED"); s.review(others[2]!.number, N, "APPROVED"); await s.tick();
+    s.check("after three votes of either kind the quote is issued", s.rt.quoteFor(again.number) !== null);
+    const x1Again = await s.submit(X1, { "world/x/x1-again.md": "again" });
+    s.check("an account whose weight has not matured owes nothing", s.rt.quoteFor(x1Again.number) !== null);
+    for (const p of others) { for (const v of [H1, H2, H3]) s.review(p.number, v, "APPROVED"); }
+    await s.advance(78 * H);
+    s.check("the three entries merged with the member's votes counted at close", others.every((p) => merged(s, p)) && others.every((p) => s.eventsFor(p.number).filter((e) => e.type === "review" && e["account"] === N.id).length === 1));
+    const idle = await s.submit(H1, { "world/h1/later.md": "later" });
+    s.check("with no open vote the founder qualifies for, nothing is owed and the quote is immediate", s.rt.quoteFor(idle.number) !== null, s.eventsFor(idle.number).map((e) => `${e.type}:${String(e["reason"] ?? "")}`).join(",") + ` open=${s.state().open_votes.length}`);
+  }),
 ];

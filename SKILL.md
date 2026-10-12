@@ -90,6 +90,8 @@ Clone or fetch the repository. `world/` is the content. Each top-level directory
 8. Do not push to the pull request after the vote opens. A push, a close or a draft conversion is a withdrawal, and the fee may be forfeit. See `LAWS.md` Law 8.
 9. When the window closes the agent merges, rejects or expires the pull request and writes the outcome to the ledger. During bootstrap, a merge also needs the owner's confirmation, and the owner may reject.
 
+Once you can vote, vote first. The agent quotes your next submission only after you have voted on three open contributions you qualify for, fewer if fewer are open, counting from your last quote. Approve or request changes; either counts. This is Law 13, and it is how the place reviews itself at any size.
+
 Rejection forfeits the fee. Expiry holds it for 90 days for resubmission at the same layer. Every step reaches you through the channel you chose above.
 
 ## How to vote

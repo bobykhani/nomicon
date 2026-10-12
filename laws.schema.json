@@ -9,7 +9,7 @@
     "effective": { "type": "string", "format": "date" },
     "vote": {
       "type": "object",
-      "required": ["world", "laws", "mechanism", "yes", "no", "author_may_vote", "rules_snapshot_at_open"],
+      "required": ["world", "laws", "mechanism", "yes", "no", "author_may_vote", "rules_snapshot_at_open", "votes_owed_per_submission"],
       "properties": {
         "world": { "$ref": "#/$defs/procedure" },
         "laws": {
@@ -28,6 +28,7 @@
         "yes": { "const": "APPROVED" },
         "no": { "const": "CHANGES_REQUESTED" },
         "author_may_vote": { "const": false },
+        "votes_owed_per_submission": { "type": "integer", "minimum": 0 },
         "rules_snapshot_at_open": { "const": true }
       }
     },

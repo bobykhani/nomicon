@@ -28,6 +28,8 @@ export interface Laws {
     no: "CHANGES_REQUESTED";
     author_may_vote: false;
     rules_snapshot_at_open: true;
+    /** Law 13: votes a qualified voter owes on open contributions before its next quote. 0 for Laws versions before the rule. */
+    votes_owed_per_submission: number;
   };
   weight: {
     source: string;
@@ -166,6 +168,7 @@ export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   if (laws.fee.max_open_votes_min === undefined) laws.fee.max_open_votes_min = 10;
   if (laws.fee.max_open_votes_per_target === undefined) laws.fee.max_open_votes_per_target = 6;
   if (laws.fee.max_queue_multiple === undefined) laws.fee.max_queue_multiple = 10;
+  if (laws.vote.votes_owed_per_submission === undefined) laws.vote.votes_owed_per_submission = 0;
   return { laws, hash: sha256Hex(rawLaws), raw: rawLaws };
 }
 

@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 8,
+  "version": 9,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -22,6 +22,7 @@
     "yes": "APPROVED",
     "no": "CHANGES_REQUESTED",
     "author_may_vote": false,
+    "votes_owed_per_submission": 3,
     "rules_snapshot_at_open": true
   },
   "weight": {

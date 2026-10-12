@@ -219,6 +219,13 @@ export class Runtime {
     const screening: "model" | "reused" | "released" = released ? "released" : passedBefore ? "reused" : "model";
     // Law 10: each account may have only so many unpaid submissions screened per day. Checked from the ledger
     // alone, before any platform call, so a flood of junk pull requests costs neither screening nor API budget.
+    // Law 13: a qualified voter owes votes on open contributions before its next quote.
+    const debt = this.votesOwed(pr.author.id, now, state, laws);
+    if (debt.owed > 0) {
+      const list = debt.available.slice(0, debt.owed).map((v) => `#${v.pr}`).join(", ");
+      await this.deferScreening(pr, now, "votes_owed", `this account can vote and owes ${debt.owed} vote${debt.owed === 1 ? "" : "s"} on open contributions before its next quote (Law 13), for example ${list}. Approve or request changes on them; either counts. The quote follows on the agent's next pass`);
+      return;
+    }
     // Law 5: while the paid queue is longer than the members could review in weeks, no new quote is issued;
     // the submission waits, at no charge, and is quoted as the queue shortens. Checked from the ledger alone.
     const maxOpen = this.maxOpenVotes(now, laws);
@@ -343,6 +350,22 @@ export class Runtime {
     await this.d.github.comment(pr.number, `Paid. ${maxOpen} votes are open, which is what the members can review at once, so this vote opens when a place frees, in order of payment. Position in the queue: ${position}. The window starts when it opens (Law 2).`);
   }
 
+  /** Law 13: votes an account owes before its next quote, and the open votes it could cast them on, soonest to close first. */
+  private votesOwed(account: number, now: number, state: State, laws: Laws): { owed: number; available: Array<{ pr: number; closes: number }> } {
+    const k = laws.vote.votes_owed_per_submission;
+    const w = state.weights[String(account)];
+    if (!k || !w || w.mature_micro <= 0n) return { owed: 0, available: [] };
+    let lastQuoteAt = 0;
+    for (const e of this.events) if (e.type === "quote" && Number(e["account"]) === account) lastQuoteAt = e.at;
+    const voted = new Set<number>();
+    for (const e of this.events) if (e.type === "review" && Number(e["account"]) === account && Number(e["submitted"]) > lastQuoteAt) voted.add(Number(e["pr"]));
+    const available = state.open_votes
+      .filter((v) => v.qualified.includes(account) && !v.authors.includes(account) && !voted.has(v.pr))
+      .map((v) => ({ pr: v.pr, closes: v.closes }))
+      .sort((a, b) => a.closes - b.closes || a.pr - b.pr);
+    return { owed: Math.min(Math.max(0, k - voted.size), available.length), available };
+  }
+
   /** Record once per head that screening waits, and tell the author once. */
   private async deferScreening(pr: PullInfo, now: number, reason: string, why: string): Promise<void> {
     if (this.events.some((e) => e.type === "screen_deferred" && Number(e["pr"]) === pr.number && String(e["head"]) === pr.headSha)) return;
@@ -370,11 +393,12 @@ export class Runtime {
   private async maybeClose(pr: PullInfo, open: LedgerEvent, quote: LedgerEvent, laws: Laws, now: number, state: State): Promise<void> {
     if (pr.headSha !== String(open["head"]) || pr.draft) { await this.withdraw(pr.number, laws, now, pr.draft ? "converted to draft" : "pushed after the vote opened", quote); return; }
     const closesAt = Number(open["closes"]);
-    if (now < closesAt) return;
+    // Reviews are recorded as they appear, so the ledger shows votes as cast and Law 13 can count them.
     const reviews = await this.d.github.listReviews(pr.number);
     const qualified = new Set((open["qualified"] as number[]) ?? []);
     const authors = new Set((open["authors"] as number[]) ?? []);
     this.recordReviews(pr.number, reviews, qualified, Number(open["opened"]), closesAt, now);
+    if (now < closesAt) return;
     const lawsAtOpen = this.lawsByHash(String(open["laws_hash"]), laws);
     const atClose = fold(this.events, closesAt, lawsAtOpen);
     const matureAtClose = new Map<number, bigint>();
