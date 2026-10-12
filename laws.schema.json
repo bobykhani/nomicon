@@ -47,7 +47,10 @@
     },
     "fee": {
       "type": "object",
-      "required": ["asset", "network", "network_caip2", "protocol", "floor_usdc", "cap_multiple_of_floor", "adjust_every_hours", "lookback_hours", "rise_step_percent", "fall_step_percent", "target_min_per_day", "target_capacity_fraction", "target_lookback_days", "target_votes_per_contribution", "layer_multiplier", "concurrency_base", "size_free_kb", "size_per_kb_usdc", "quote_valid_hours", "rejection_refund", "expiry_hold_days", "taxes_included"],
+      "required": ["asset", "network", "network_caip2", "protocol", "floor_usdc", "cap_multiple_of_floor", "adjust_every_hours", "lookback_hours", "rise_step_percent", "fall_step_percent", "target_min_per_day", "target_capacity_fraction", "target_lookback_days", "target_votes_per_contribution", "layer_multiplier", "concurrency_base", "size_free_kb", "size_per_kb_usdc", "quote_valid_hours", "rejection_refund", "expiry_hold_days", "taxes_included", "max_open_votes_min", "max_open_votes_per_target", "max_queue_multiple"],
+        "max_open_votes_min": { "type": "integer", "minimum": 3 },
+        "max_open_votes_per_target": { "type": "number", "minimum": 1 },
+        "max_queue_multiple": { "type": "number", "minimum": 1 },
       "properties": {
         "asset": { "const": "USDC" },
         "network": { "type": "string" },

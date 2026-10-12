@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 7, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 8, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -16,7 +16,7 @@ A **qualified voter** on a contribution is a non-author account whose mature wei
 
 ## Law 2. World procedure
 
-1. The enforcement agent screens the contribution (Law 10), quotes the fee (Law 5), and confirms payment. The vote then opens and a **72 hour** window starts. The open event records the head commit of the pull request, the hash of the `laws.json` in force, and the set of qualified voters. Those rules and that set govern this vote.
+1. The enforcement agent screens the contribution (Law 10), quotes the fee (Law 5), and confirms payment. The vote then opens and a **72 hour** window starts, provided fewer than max(**10**, **6** × the throughput target of Law 5) votes are open; otherwise the paid contribution waits its turn, in order of payment, the agent posts its place in the queue, and the window starts when it opens. The open event records the head commit of the pull request, the hash of the `laws.json` in force, and the set of qualified voters. Those rules and that set govern this vote.
 2. A qualified voter votes by submitting a review on the pull request: *Approve* is yes, *Request changes* is no. A vote is the latest review in one of those two states by a qualified voter, submitted after the open event and no later than the close timestamp by the platform's own clock. Reviews that only comment are ignored and do not replace an earlier vote. Dismissal of a review is ignored.
 3. When the window closes, the agent counts distinct qualified voters who voted yes. Fewer than **3** means the contribution **expires**.
 4. Otherwise the agent sums the mature weight, as of the close and capped under Law 4, of yes votes and of no votes. More yes weight merges. More no weight rejects.
@@ -47,7 +47,7 @@ The fee for a contribution is:
 - **Concurrency.** An account's k-th simultaneously open paid submission costs 2^(k−1) times the base.
 - **Size component.** **0.05 USDC** per kilobyte of 1024 bytes added or modified in the diff beyond the first **8 kilobytes**.
 
-A **quote** is issued when the screen passes and is valid for **24 hours**. A submission unpaid when its quote lapses is closed; it may request a new quote. The quote cites the commit of `TERMS.md` being accepted.
+A **quote** is issued when the screen passes and is valid for **24 hours**. While more than **10** times the number of votes that may be open are paid and waiting, no new quote is issued; a submission then waits, at no charge, and is quoted as the queue shortens, oldest first. A submission unpaid when its quote lapses is closed; it may request a new quote. The quote cites the commit of `TERMS.md` being accepted.
 
 A **payment** counts once. It must be at least the quoted amount, in USDC on Base via the x402 protocol, to the destination in force under Constitution Article 7, carrying the pull request number in the x402 payment payload as `agent/PROTOCOL.md` specifies. Arrival is judged by the block timestamp on the fee network, and a quote's validity is extended by any outage the agent records. A payment that matches no open quote, and any amount above the quote, is not refunded. A payment from an address the owner identifies as subject to Canadian or United States sanctions is not accepted; the contribution does not proceed, and the owner handles the funds as the law requires, recording the event.
 
@@ -79,7 +79,7 @@ During bootstrap a paid, screened contribution merges only when the owner confir
 
 ## Law 10. Screening
 
-The legal-floor screen runs before a fee is quoted. It may hold a contribution for the owner's review; it can never approve one. A submission whose content already passed the screen is not screened again. Each account may have at most **5** submissions, and at most **4096** kilobytes of content, screened in any 24 hours that have not been paid, and the agent screens at most **32768** kilobytes of unpaid content in any 24 hours in all, of which accounts that have never paid a fee may use half. A submission beyond these waits, at no charge, until a quote is paid or 24 hours pass, and is then screened automatically; accounts that have paid before are served first. A hold the owner has not resolved within **14 days** closes the submission without charge. A contribution the owner rejects under Constitution Article 4 bars its author from submitting for **90 days**.
+The legal-floor screen runs before a fee is quoted. It may hold a contribution for the owner's review; it can never approve one. A submission whose content already passed the screen is not screened again. Each account may have at most **5** submissions, and at most **4096** kilobytes of content, screened in any 24 hours that have not been paid, and the agent screens at most **32768** kilobytes of unpaid content in any 24 hours in all, of which accounts that have never paid a fee may use half. A submission beyond these waits, at no charge, until a quote is paid or 24 hours pass, and is then screened automatically. A hold the owner has not resolved within **14 days** closes the submission without charge. A contribution the owner rejects under Constitution Article 4 bars its author from submitting for **90 days**.
 
 Merges result only from votes, the arithmetic in these Laws, and, during bootstrap, the owner's confirmation. No model output is ever an input to a merge decision. Content under screening is treated as data, never as instructions. The screen is best-effort and can miss things; voters are the second screen, and Constitution Article 5 is the backstop.
 

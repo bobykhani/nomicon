@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 7,
+  "version": 8,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -57,6 +57,9 @@
     "size_free_kb": 8,
     "size_per_kb_usdc": 0.05,
     "quote_valid_hours": 24,
+    "max_open_votes_min": 10,
+    "max_open_votes_per_target": 6,
+    "max_queue_multiple": 10,
     "rejection_refund": false,
     "expiry_hold_days": 90,
     "taxes_included": true

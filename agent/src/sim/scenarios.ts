@@ -100,7 +100,7 @@ export const scenarios: Scenario[] = [
     s.check("closing before any vote holds the fee", w?.["fee_disposition"] === "held" && s.state().held_fees.some((f) => f.account === N.id), String(w?.["fee_disposition"]));
   }),
 
-  sc("fee-pump", "Ten attacker accounts open three paid submissions a day for twelve days with nobody voting. The base fee rises to its cap of ten times the floor, concurrency pricing makes the flood expensive, and the fee falls back within a week of the flood stopping.", async (s) => {
+  sc("fee-pump", "Ten attacker accounts open three paid submissions a day for twelve days with nobody voting. Concurrency pricing makes every further queued submission cost double, the vote queue fills and the agent stops quoting, so volume alone cannot drive the base fee to its cap, and the fee falls back within a week of the flood stopping.", async (s) => {
     await s.seedFounders([H1, H2, H3]);
     const attackers = Array.from({ length: 10 }, (_, i) => acct(40 + i, `spam${i}`));
     let spent = 0n, maxBase = 0n;
@@ -113,7 +113,7 @@ export const scenarios: Scenario[] = [
       if (s.state().fee.base_micro > maxBase) maxBase = s.state().fee.base_micro;
     }
     s.note(`attackers spent ${spent / 1_000_000n} USDC over 12 days; peak base fee ${Number(maxBase) / 1e6} USDC`);
-    s.check("base fee reaches the cap of ten times the floor", maxBase === 10_000_000n, String(maxBase));
+    s.check("the queue stop throttles the pump: quoting paused while the paid queue was full, and the base stayed below its cap", maxBase < 10_000_000n && s.events.some((e) => e.type === "screen_deferred" && e["reason"] === "capacity"), String(maxBase));
     s.check("base fee never exceeds the cap", maxBase <= 10_000_000n);
     s.check("the flood cost the attackers more than 10,000 USDC", spent > 10_000_000_000n, String(spent / 1_000_000n));
     await s.advance(7 * DAY);
@@ -357,7 +357,7 @@ export const scenarios: Scenario[] = [
     await s.tick();
     s.check("five submissions were screened and quoted", s.screen.calls - before === 5 && prs.filter((p) => s.rt.quoteFor(p.number)).length === 5, String(s.screen.calls - before));
     const deferred = prs.filter((p) => s.eventsFor(p.number).some((e) => e.type === "screen_deferred"));
-    s.check("the other two wait, each recorded and commented on once", deferred.length === 2 && deferred.every((p) => p.comments.filter((c) => c.startsWith("Waiting to be screened")).length === 1));
+    s.check("the other two wait, each recorded and commented on once", deferred.length === 2 && deferred.every((p) => p.comments.filter((c) => c.startsWith("Waiting")).length === 1));
     await s.tick(); await s.tick();
     s.check("waiting submissions are not screened again or re-commented on later ticks", s.screen.calls - before === 5 && deferred.every((p) => p.comments.length === 1 && s.eventsFor(p.number).filter((e) => e.type === "screen_deferred").length === 1));
     await s.pay(prs[0]!.number); await s.tick();
@@ -391,5 +391,27 @@ export const scenarios: Scenario[] = [
     const calls2 = s.screen.calls;
     await s.advance(24 * H, H);
     s.check("and the rest the day after, nothing screened twice", s.screen.calls - calls2 === 9 && prs.every((p) => s.eventsFor(p.number).filter((e) => e.type === "quote" && e["screening"] === "model").length === 1), String(s.screen.calls - calls2));
+  }),
+
+  sc("vote-queue", "Two hundred accounts each pay for a submission in one day. Only eighteen votes open at once; the rest wait in order of payment, told their position, and open as earlier votes close. A two-hundred-and-first submission is not even quoted while the queue is that long.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const accounts = Array.from({ length: 200 }, (_, i) => acct(1000 + i, `q${i}`));
+    const prs = accounts.map((a) => s.github.open(a, { [`world/q/${a.login}.md`]: `entry by ${a.login}` }));
+    await s.tick();
+    s.check("all two hundred were quoted", prs.every((p) => s.rt.quoteFor(p.number) !== null));
+    for (const p of prs) await s.pay(p.number);
+    await s.tick();
+    const queued = s.events.filter((e) => e.type === "vote_queued");
+    s.check("eighteen votes opened and the other 182 were queued with positions 1 to 182 in payment order", s.state().open_votes.length === 18 && queued.length === 182 && queued.every((e, i) => Number(e["position"]) === i + 1 && Number(e["pr"]) === prs[18 + i]!.number), `open ${s.state().open_votes.length}, queued ${queued.length}`);
+    s.check("each queued submission was told once", prs.slice(18).every((p) => p.comments.filter((c) => c.startsWith("Paid.")).length === 1));
+    const late = s.github.open(N, { "world/q/late.md": "late" });
+    await s.tick();
+    s.check("with 182 paid and waiting, a new submission is not quoted but told why, and not screened", s.rt.quoteFor(late.number) === null && s.eventsFor(late.number).some((e) => e.type === "screen_deferred" && e["reason"] === "capacity"));
+    await s.tick(); await s.tick();
+    s.check("the queue does not re-comment on later ticks", prs.slice(18).every((p) => p.comments.filter((c) => c.startsWith("Paid.")).length === 1) && s.events.filter((e) => e.type === "vote_queued").length === 182);
+    await s.advance(78 * H);
+    const opened = s.events.filter((e) => e.type === "vote_open").map((e) => Number(e["pr"]));
+    s.check("when the first eighteen closed, the next eighteen opened in payment order", s.state().open_votes.length === 18 && JSON.stringify(opened.slice(-18)) === JSON.stringify(prs.slice(18, 36).map((p) => p.number)), String(s.state().open_votes.length));
+    s.check("the first eighteen expired unreviewed with their fees held, nothing merged", prs.slice(0, 18).every((p) => s.eventsFor(p.number).some((e) => e.type === "expiry")) && s.github.merges.length === 3);
   }),
 ];

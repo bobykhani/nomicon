@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { BOOTSTRAP_MAX_DAYS } from "./constitution.js";
-import { adjustBase, quote as computeQuote } from "./fee.js";
+import { adjustBase, quote as computeQuote, throughputTarget } from "./fee.js";
 import { intake } from "./intake.js";
 import { Ledger, type LedgerEvent } from "./ledger.js";
 import { parseLaws, LawsError, type Laws, type LoadedLaws } from "./laws.js";
@@ -140,11 +140,23 @@ export class Runtime {
     await this.maybeEndBootstrap(now);
     const pulls = await this.d.github.listOpenPulls();
     // Closes are processed in the order their windows closed, then by number, so an earlier submission wins a conflict.
+    // Order of service: votes by their close time, then paid submissions in order of payment, then submissions
+    // never quoted before those whose quote lapsed, then by number. So places go oldest first (Law 2, Law 5).
     const st = this.state(now);
     const closes = new Map(st.open_votes.map((v) => [v.pr, v.closes] as [number, number]));
-    const known = this.unpaidScreening(now, st).known;
-    const rank = (p: PullInfo) => (known.has(p.author.id) ? 0 : 1);
-    pulls.sort((a, b) => ((closes.get(a.number) ?? Infinity) - (closes.get(b.number) ?? Infinity)) || rank(a) - rank(b) || a.number - b.number);
+    const paidAt = new Map<number, number>(), quoted = new Set<number>();
+    for (const e of this.events) {
+      if (e.type === "payment" && e["matched"] !== false && !paidAt.has(Number(e["pr"]))) paidAt.set(Number(e["pr"]), e.id);
+      if (e.type === "quote") quoted.add(Number(e["pr"]));
+    }
+    const key = (p: PullInfo): [number, number, number] => {
+      const c = closes.get(p.number);
+      if (c !== undefined) return [0, c, p.number];
+      const paid = paidAt.get(p.number);
+      if (paid !== undefined) return [1, paid, p.number];
+      return [2, quoted.has(p.number) ? 1 : 0, p.number];
+    };
+    pulls.sort((a, b) => { const x = key(a), y = key(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });
     const openNumbers = new Set(pulls.map((p) => p.number));
     for (const pr of pulls) await this.handlePull(pr, laws, now);
     await this.applyOwnerDecisions(laws, now, openNumbers);
@@ -178,7 +190,11 @@ export class Runtime {
           await this.d.github.comment(pr.number, "The quote lapsed unpaid. A new quote will be issued on the agent's next pass while this pull request stays open.");
         }
         return;
-      case "paid": return this.openVote(pr, p.quote, laws, now, state);
+      case "paid": {
+        const maxOpen = this.maxOpenVotes(now, laws);
+        if (state.open_votes.length >= maxOpen) return this.queueVote(pr, p.payment, now, maxOpen);
+        return this.openVote(pr, p.quote, laws, now, state);
+      }
       case "voting": return this.maybeClose(pr, p.open, p.quote, laws, now, state);
       case "await_owner":
         if (now - p.close.at >= laws.bootstrap.owner_action_deadline_days * 86400) await this.expire(pr.number, p.quote, laws, now, "the owner did not act within the bootstrap deadline");
@@ -203,10 +219,18 @@ export class Runtime {
     const screening: "model" | "reused" | "released" = released ? "released" : passedBefore ? "reused" : "model";
     // Law 10: each account may have only so many unpaid submissions screened per day. Checked from the ledger
     // alone, before any platform call, so a flood of junk pull requests costs neither screening nor API budget.
+    // Law 5: while the paid queue is longer than the members could review in weeks, no new quote is issued;
+    // the submission waits, at no charge, and is quoted as the queue shortens. Checked from the ledger alone.
+    const maxOpen = this.maxOpenVotes(now, laws);
+    const waiting = this.paidWaiting(now).length;
+    if (waiting >= maxOpen * laws.fee.max_queue_multiple) {
+      await this.deferScreening(pr, now, "capacity", `${waiting} paid contributions are waiting for a vote and ${state.open_votes.length} votes are open, which is more than the members can review for weeks (Law 5). This submission is quoted automatically when the queue shortens, oldest first`);
+      return;
+    }
     const budget = screening === "model" ? this.unpaidScreening(now, state) : null;
     const mine = budget?.byAccount.get(pr.author.id) ?? { count: 0, bytes: 0 };
     if (budget && mine.count >= laws.screening.max_unpaid_screens_per_account_per_day) {
-      await this.deferScreening(pr, now, "account_count", `this account already has ${mine.count} screened submissions from the last 24 hours that are unpaid, and the Laws allow ${laws.screening.max_unpaid_screens_per_account_per_day}`);
+      await this.deferScreening(pr, now, "account_count", `this account already has ${mine.count} screened submissions from the last 24 hours that are unpaid, and the Laws allow ${laws.screening.max_unpaid_screens_per_account_per_day} (Law 10). Paying an open quote frees its place at once; otherwise places free themselves 24 hours after each screening`);
       return;
     }
     const [files, commits, existing] = await Promise.all([this.d.github.listFiles(pr.number), this.d.github.listCommits(pr.number), this.d.github.listPaths(pr.baseSha)]);
@@ -228,8 +252,8 @@ export class Runtime {
       let reason: string | null = null, why = "";
       if (mine.bytes + screenedBytes > perAccount) { reason = "account_bytes"; why = `this account already has ${kb(mine.bytes)} kB of unpaid screened content from the last 24 hours, and the Laws allow ${laws.screening.max_unpaid_screen_kb_per_account_per_day} kB`; }
       else if (budget.total + screenedBytes > total) { reason = "global_bytes"; why = `the agent has screened ${kb(budget.total)} kB of unpaid content in the last 24 hours, and the Laws allow ${laws.screening.max_unpaid_screen_kb_per_day} kB a day in all`; }
-      else if (newcomer && budget.newcomers + screenedBytes > total / 2) { reason = "newcomer_bytes"; why = `accounts that have not paid before share half of the daily screening budget, and ${kb(budget.newcomers)} kB of it is used; accounts that have paid are served first`; }
-      if (reason) { await this.deferScreening(pr, now, reason, why); return; }
+      else if (newcomer && budget.newcomers + screenedBytes > total / 2) { reason = "newcomer_bytes"; why = `accounts that have not paid before share half of the daily screening budget, and ${kb(budget.newcomers)} kB of it is used; the other half is kept for accounts that have paid`; }
+      if (reason) { await this.deferScreening(pr, now, reason, why + " (Law 10). Paying an open quote frees its place at once; otherwise places free themselves 24 hours after each screening"); return; }
     }
     // Law 10: screen before any quote.
     if (screening === "model") {
@@ -287,11 +311,43 @@ export class Runtime {
     return { byAccount, total, newcomers, known };
   }
 
+  /** Reviews by qualified voters in the target lookback, the community's own review capacity (Law 5). */
+  private qualifiedVotesInLookback(now: number, laws: Laws): number {
+    const since = now - laws.fee.target_lookback_days * 86400;
+    return this.events.filter((e) => e.type === "review" && Number(e["submitted"]) >= since).length;
+  }
+
+  /** Law 2: how many votes may be open at once, from the throughput target. */
+  private maxOpenVotes(now: number, laws: Laws): number {
+    return Math.max(laws.fee.max_open_votes_min, laws.fee.max_open_votes_per_target * throughputTarget(this.qualifiedVotesInLookback(now, laws), laws));
+  }
+
+  /** Paid submissions whose vote has not opened, in order of payment. */
+  private paidWaiting(now: number): number[] {
+    const seen = new Set<number>(), out: number[] = [];
+    for (const e of this.events) {
+      if (e.type !== "payment" || e["matched"] === false) continue;
+      const pr = Number(e["pr"]);
+      if (seen.has(pr)) continue;
+      seen.add(pr);
+      if (phaseOf(pr, this.events).kind === "paid") out.push(pr);
+    }
+    return out;
+  }
+
+  /** A paid submission waits for a place; record its position once and tell the author once. */
+  private async queueVote(pr: PullInfo, payment: LedgerEvent, now: number, maxOpen: number): Promise<void> {
+    if (this.events.some((e) => e.type === "vote_queued" && Number(e["pr"]) === pr.number && Number(e["payment"]) === payment.id)) return;
+    const position = this.paidWaiting(now).indexOf(pr.number) + 1;
+    this.d.ledger.append(now, "vote_queued", { pr: pr.number, payment: payment.id, position, max_open: maxOpen });
+    await this.d.github.comment(pr.number, `Paid. ${maxOpen} votes are open, which is what the members can review at once, so this vote opens when a place frees, in order of payment. Position in the queue: ${position}. The window starts when it opens (Law 2).`);
+  }
+
   /** Record once per head that screening waits, and tell the author once. */
   private async deferScreening(pr: PullInfo, now: number, reason: string, why: string): Promise<void> {
     if (this.events.some((e) => e.type === "screen_deferred" && Number(e["pr"]) === pr.number && String(e["head"]) === pr.headSha)) return;
     this.d.ledger.append(now, "screen_deferred", { pr: pr.number, head: pr.headSha, account: pr.author.id, reason });
-    await this.d.github.comment(pr.number, `Waiting to be screened: ${why} (Law 10). Paying an open quote frees its place at once; otherwise places free themselves 24 hours after each screening. This submission will be screened automatically then. Nothing is charged for waiting.`);
+    await this.d.github.comment(pr.number, `Waiting: ${why}. This submission proceeds automatically then. Nothing is charged for waiting.`);
   }
 
   private async openVote(pr: PullInfo, quote: LedgerEvent, laws: Laws, now: number, state: State): Promise<void> {
@@ -483,8 +539,7 @@ export class Runtime {
     const state = this.state(now);
     const lookback = now - laws.fee.lookback_hours * 3600;
     const paid = this.events.filter((e) => e.type === "payment" && e["matched"] !== false && e.at >= lookback).length;
-    const since = now - laws.fee.target_lookback_days * 86400;
-    const qualifiedVotes = this.events.filter((e) => e.type === "review" && Number(e["submitted"]) >= since).length;
+    const qualifiedVotes = this.qualifiedVotesInLookback(now, laws);
     const r = adjustBase({ baseMicro: state.fee.base_micro, paidSubmissionsInLookback: paid, qualifiedVotesInLookback: qualifiedVotes }, laws);
     let anchorTx: string | null = null;
     const head = this.d.ledger.headHash();

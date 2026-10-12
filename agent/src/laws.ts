@@ -59,6 +59,9 @@ export interface Laws {
     size_free_kb: number;
     size_per_kb_usdc: number;
     quote_valid_hours: number;
+    max_open_votes_min: number;
+    max_open_votes_per_target: number;
+    max_queue_multiple: number;
     rejection_refund: false;
     expiry_hold_days: number;
     taxes_included: true;
@@ -160,6 +163,9 @@ export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   if (laws.screening.max_unpaid_screens_per_account_per_day === undefined) laws.screening.max_unpaid_screens_per_account_per_day = 5;
   if (laws.screening.max_unpaid_screen_kb_per_account_per_day === undefined) laws.screening.max_unpaid_screen_kb_per_account_per_day = 4096;
   if (laws.screening.max_unpaid_screen_kb_per_day === undefined) laws.screening.max_unpaid_screen_kb_per_day = 32768;
+  if (laws.fee.max_open_votes_min === undefined) laws.fee.max_open_votes_min = 10;
+  if (laws.fee.max_open_votes_per_target === undefined) laws.fee.max_open_votes_per_target = 6;
+  if (laws.fee.max_queue_multiple === undefined) laws.fee.max_queue_multiple = 10;
   return { laws, hash: sha256Hex(rawLaws), raw: rawLaws };
 }
 
