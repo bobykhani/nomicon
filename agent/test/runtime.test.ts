@@ -18,7 +18,7 @@ function harness(holdIf?: ConstructorParameters<typeof FakeScreen>[0]) {
   const github = new FakeGitHub(clock);
   const chain = new FakeChain(clock);
   const dir = mkdtempSync(join(tmpdir(), "nomicon-rt-"));
-  const ledger = new Ledger(join(dir, "events.jsonl"));
+  const ledger = new Ledger(dir);
   const rt = new Runtime({
     github, chain, screen: new FakeScreen(holdIf), oracle: new FixedOracle(), clock, ledger, publicBaseUrl: "https://pay.example",
     loadLaws: async () => ({ rawLaws, rawSchema }), termsCommit: async () => "tt".repeat(20),
@@ -59,7 +59,9 @@ describe("runtime end to end", () => {
     expect(st.weighted_accounts).toBe(0);
     h.clock.advance(30 * DAY);
     expect(h.rt.state().weighted_accounts).toBe(1);
-    expect(h.github.published.map((f) => f.path)).toEqual(["ledger/events.jsonl", "ledger/state.json", "ledger/questions.json"]);
+    const paths = h.github.published.map((f) => f.path);
+    expect(paths.filter((p) => p.startsWith("ledger/events/") && p.endsWith(".jsonl")).length).toBeGreaterThan(0);
+    expect(paths.slice(-3)).toEqual(["ledger/head.json", "ledger/state.json", "ledger/questions.json"]);
   });
 
   it("rejects at intake without a fee, and holds with no quote", async () => {

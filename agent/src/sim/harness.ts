@@ -55,7 +55,7 @@ export class Sim {
     this.chain = new FakeChain(this.clock);
     const { privateKey } = generateKeyPairSync("ed25519");
     this.signer = new Signer(privateKey.export({ type: "pkcs8", format: "pem" }) as string);
-    this.ledger = new Ledger(join(mkdtempSync(join(tmpdir(), "nomicon-sim-")), "events.jsonl"), this.signer);
+    this.ledger = new Ledger(mkdtempSync(join(tmpdir(), "nomicon-sim-")), this.signer);
     const notifier = new Notifier({ github: this.github, doorbell: this.doorbell, store: this.store, ledger: this.ledger, clock: this.clock, log: (m) => this.notes.push("log: " + m), doorbellIssue: this.doorbellIssue, allowPrivateDoorbells: false });
     this.rt = new Runtime({
       github: this.github, chain: this.chain, screen: this.screen, oracle: new FixedOracle(), clock: this.clock, ledger: this.ledger,

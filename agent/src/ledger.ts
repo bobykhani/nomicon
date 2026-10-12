@@ -3,7 +3,8 @@
  * no whitespace, bigints as decimal strings) is what gets signed.
  */
 import { createHash, sign as edSign, verify as edVerify, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
-import { appendFileSync, closeSync, existsSync, openSync, readFileSync, unlinkSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 export type EventType =
   | "genesis" | "intake_reject" | "screen_hold" | "hold_resolved" | "quote" | "quote_lapsed" | "payment" | "vote_open" | "review"
@@ -43,47 +44,120 @@ export function verifyEvent(e: LedgerEvent, publicKeyPem: string): boolean {
   return edVerify(null, Buffer.from(canonical(e)), createPublicKey(publicKeyPem), Buffer.from(e.sig, "base64"));
 }
 
-/** Serialise one event for events.jsonl: bigints as strings. */
+/** Serialise one event for a segment file: bigints as strings. */
 export function serialize(e: LedgerEvent): string {
   return JSON.stringify(e, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
 }
 
-export function parseEvents(text: string): LedgerEvent[] {
+/** Parse one segment; ids must continue from `after`. */
+export function parseEvents(text: string, after = 0): LedgerEvent[] {
   const out: LedgerEvent[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     out.push(JSON.parse(line) as LedgerEvent);
   }
-  for (let i = 0; i < out.length; i++) if (out[i]!.id !== i + 1) throw new Error(`ledger event ${i + 1} has id ${out[i]!.id}`);
+  for (let i = 0; i < out.length; i++) if (out[i]!.id !== after + i + 1) throw new Error(`ledger event ${after + i + 1} has id ${out[i]!.id}`);
   return out;
 }
 
+/** UTC day of a timestamp: the name of the segment the event belongs in. */
+export function segmentOf(at: number): string {
+  return new Date(at * 1000).toISOString().slice(0, 10);
+}
+
+export interface LedgerHead { version: 1; head_event: number; head_hash: string; segment: string | null; updated_at: number }
+
+const SEGMENT = /^\d{4}-\d{2}-\d{2}\.jsonl$/;
+
+function segmentNames(segDir: string): string[] {
+  return existsSync(segDir) ? readdirSync(segDir).filter((n) => SEGMENT.test(n)).sort() : [];
+}
+
+/**
+ * Read a ledger directory: every daily segment under events/ in order, ids
+ * continuous across files and each event in the file of its own day. A
+ * directory that still holds the old single events.jsonl is read as that
+ * file; one that holds both is refused.
+ */
+export function readLedgerDir(dir: string): LedgerEvent[] {
+  const segDir = join(dir, "events"), legacy = join(dir, "events.jsonl");
+  const names = segmentNames(segDir);
+  if (names.length && existsSync(legacy)) throw new Error(`${dir} holds both events/ and events.jsonl; run \`nomicon migrate-ledger\``);
+  if (!names.length) return existsSync(legacy) ? parseEvents(readFileSync(legacy, "utf8")) : [];
+  const out: LedgerEvent[] = [];
+  for (const n of names) {
+    const day = n.slice(0, 10);
+    for (const e of parseEvents(readFileSync(join(segDir, n), "utf8"), out.length)) {
+      if (segmentOf(e.at) !== day) throw new Error(`ledger event ${e.id} is in segment ${day} but belongs to ${segmentOf(e.at)}`);
+      out.push(e);
+    }
+  }
+  return out;
+}
+
+/**
+ * The ledger on disk: ledger/events/YYYY-MM-DD.jsonl, one file per UTC day,
+ * plus ledger/head.json naming the latest event. Appends are exclusive
+ * across processes (the owner's commands and the agent share one ledger).
+ */
 export class Ledger {
-  readonly events: LedgerEvent[];
-  constructor(readonly path: string, private signer?: Signer) {
-    this.events = existsSync(path) ? parseEvents(readFileSync(path, "utf8")) : [];
+  readonly events: LedgerEvent[] = [];
+  private running = createHash("sha256");
+  private dirty = new Set<string>();
+  private lastSegmentStart = 0;
+  constructor(readonly dir: string, private signer?: Signer) {
+    for (const e of readLedgerDir(dir)) this.adopt(e);
   }
   get head(): number { return this.events.length; }
+  private segmentPath(name: string): string { return join(this.dir, "events", name + ".jsonl"); }
+
+  private adopt(e: LedgerEvent): void {
+    const last = this.events[this.events.length - 1];
+    if (!last || segmentOf(e.at) !== segmentOf(last.at)) this.lastSegmentStart = this.events.length;
+    this.events.push(e);
+    this.running.update(eventHash(e));
+    this.dirty.add(segmentOf(e.at));
+  }
 
   /**
-   * Re-read the file and adopt events another process appended (the owner's
-   * command line and the running agent share one ledger). The file must be a
-   * strict extension of what is in memory; anything else is corruption.
+   * Adopt events another process appended. Only the segment holding the last
+   * known event and any newer segments are read; what is already in memory
+   * must match the disk exactly, and the disk must extend memory.
    */
   reload(): number {
-    const onDisk = existsSync(this.path) ? parseEvents(readFileSync(this.path, "utf8")) : [];
-    if (onDisk.length < this.events.length) throw new Error(`ledger on disk has ${onDisk.length} events but memory has ${this.events.length}`);
-    for (let i = 0; i < this.events.length; i++) {
-      if (eventHash(onDisk[i]!) !== eventHash(this.events[i]!)) throw new Error(`ledger event ${i + 1} differs on disk`);
+    if (this.events.length === 0) { for (const e of readLedgerDir(this.dir)) this.adopt(e); return this.events.length; }
+    const segDir = join(this.dir, "events");
+    if (existsSync(join(this.dir, "events.jsonl")) && segmentNames(segDir).length === 0) {
+      const onDisk = readLedgerDir(this.dir);
+      return this.adoptExtension(onDisk, 0);
     }
-    const added = onDisk.length - this.events.length;
-    for (let i = this.events.length; i < onDisk.length; i++) this.events.push(onDisk[i]!);
+    const from = segmentOf(this.events[this.lastSegmentStart]!.at);
+    let idx = this.lastSegmentStart, added = 0;
+    for (const n of segmentNames(segDir).filter((n) => n.slice(0, 10) >= from)) {
+      const day = n.slice(0, 10);
+      const parsed = parseEvents(readFileSync(join(segDir, n), "utf8"), idx);
+      for (const e of parsed) if (segmentOf(e.at) !== day) throw new Error(`ledger event ${e.id} is in segment ${day} but belongs to ${segmentOf(e.at)}`);
+      added += this.adoptExtension(parsed, idx);
+      idx += parsed.length;
+    }
+    if (idx < this.events.length) throw new Error(`ledger on disk has ${idx} events but memory has ${this.events.length}`);
     return added;
   }
 
-  /** Exclusive advisory lock on <path>.lock, so two processes never append at once. */
+  /** Events `onDisk` are those at memory indexes `offset`...; verify the overlap, adopt the rest. */
+  private adoptExtension(onDisk: LedgerEvent[], offset: number): number {
+    let added = 0;
+    for (let i = 0; i < onDisk.length; i++) {
+      const idx = offset + i, e = onDisk[i]!;
+      if (idx < this.events.length) { if (eventHash(e) !== eventHash(this.events[idx]!)) throw new Error(`ledger event ${e.id} differs on disk`); }
+      else { this.adopt(e); added++; }
+    }
+    return added;
+  }
+
+  /** Exclusive advisory lock on <dir>/events.lock, so two processes never append at once. */
   private withLock<T>(fn: () => T): T {
-    const lock = this.path + ".lock";
+    const lock = join(this.dir, "events.lock");
     const deadline = Date.now() + 10_000;
     for (;;) {
       try { const fd = openSync(lock, "wx"); closeSync(fd); break; }
@@ -96,20 +170,55 @@ export class Ledger {
     try { return fn(); } finally { try { unlinkSync(lock); } catch { /* already gone */ } }
   }
 
-  /** Append, sign, write. Returns the stored event. */
+  /** Append, sign, write to the segment of the event's day, update head.json. Returns the stored event. */
   append(at: number, type: EventType, fields: Record<string, unknown>): LedgerEvent {
     return this.withLock(() => {
+      if (existsSync(join(this.dir, "events.jsonl"))) throw new Error("ledger/events.jsonl is the old single-file ledger; run `nomicon migrate-ledger` first");
       this.reload();
+      const last = this.events[this.events.length - 1];
+      if (last && at < last.at) at = last.at; // one ledger, one clock: time does not run backwards across segments
       const e: LedgerEvent = { id: this.head + 1, at, type, ...fields };
       if (this.signer) e.sig = this.signer.sign(e);
-      appendFileSync(this.path, serialize(e) + "\n", "utf8");
-      this.events.push(e);
+      mkdirSync(join(this.dir, "events"), { recursive: true });
+      appendFileSync(this.segmentPath(segmentOf(at)), serialize(e) + "\n", "utf8");
+      this.adopt(e);
+      writeFileSync(join(this.dir, "head.json"), this.headJson(), "utf8");
       return e;
     });
   }
-  headHash(): string {
-    const h = createHash("sha256");
-    for (const e of this.events) h.update(eventHash(e));
-    return h.digest("hex");
+
+  /** SHA-256 over the hashes of every event in order, kept incrementally. */
+  headHash(): string { return this.running.copy().digest("hex"); }
+
+  headJson(): string {
+    const last = this.events[this.events.length - 1];
+    const head: LedgerHead = { version: 1, head_event: this.head, head_hash: this.headHash(), segment: last ? segmentOf(last.at) : null, updated_at: last?.at ?? 0 };
+    return JSON.stringify(head, null, 2) + "\n";
+  }
+
+  /** Segments with events not yet published, oldest first. */
+  dirtySegments(): string[] { return [...this.dirty].sort(); }
+  markPublished(names: string[]): void { for (const n of names) this.dirty.delete(n); }
+  segmentContent(name: string): string {
+    const start = name === segmentOf(this.events[this.lastSegmentStart]?.at ?? 0) ? this.lastSegmentStart : 0;
+    const lines: string[] = [];
+    for (let i = start; i < this.events.length; i++) { const e = this.events[i]!; if (segmentOf(e.at) === name) lines.push(serialize(e)); }
+    return lines.join("\n") + (lines.length ? "\n" : "");
+  }
+
+  /** Split the old single events.jsonl into daily segments and head.json. Returns the number of events moved. */
+  static migrate(dir: string): number {
+    const legacy = join(dir, "events.jsonl");
+    if (!existsSync(legacy)) throw new Error(`${legacy} does not exist; nothing to migrate`);
+    if (segmentNames(join(dir, "events")).length) throw new Error(`${dir}/events already holds segments; refusing to mix`);
+    const events = parseEvents(readFileSync(legacy, "utf8"));
+    mkdirSync(join(dir, "events"), { recursive: true });
+    const byDay = new Map<string, string[]>();
+    for (const e of events) { const d = segmentOf(e.at); byDay.set(d, [...(byDay.get(d) ?? []), serialize(e)]); }
+    for (const [d, lines] of byDay) writeFileSync(join(dir, "events", d + ".jsonl"), lines.join("\n") + "\n", "utf8");
+    unlinkSync(legacy);
+    const led = new Ledger(dir);
+    writeFileSync(join(dir, "head.json"), led.headJson(), "utf8");
+    return events.length;
   }
 }

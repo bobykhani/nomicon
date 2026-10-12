@@ -2,9 +2,15 @@
 
 The public record. Only the enforcement agent writes here. No pull request may touch this directory. Entries are signed with the key named in `CONSTITUTION.md` Article 11, and the ledger head hash is anchored on the fee network at each fee adjustment.
 
-## events.jsonl
+## events/
 
-One JSON object per line, append-only, in order. Every object has `id` (sequential integer), `at` (UTC seconds), `type`, `sig` (signature over the canonical JSON of the object without `sig`), and type-specific fields. Formal schema in `events.schema.json`. Types:
+One file per UTC day, `events/YYYY-MM-DD.jsonl`, named by the day of each event's `at`. Each line is one JSON object, append-only, and ids run continuously across files: the first id in a day's file follows the last id of the day before. Every object has `id` (sequential integer), `at` (UTC seconds), `type`, `sig` (signature over the canonical JSON of the object without `sig`), and type-specific fields. Formal schema in `events.schema.json`. To read the whole ledger, read the files in name order. To follow it, read `head.json`, then the file it names from the line after the last id you have.
+
+## head.json
+
+`{ version, head_event, head_hash, segment, updated_at }`: the latest event's id, the SHA-256 over the hashes of every event in order, the day file holding it, and its time. Rewritten on every append.
+
+Types:
 
 | type | when | key fields |
 |---|---|---|
@@ -45,7 +51,7 @@ Derived from merge events by the agent: every question asked in a merged file, w
 
 ## state.json
 
-Recomputed from `events.jsonl` by the replay tool.
+Recomputed from the event files by the replay tool.
 
 | field | meaning |
 |---|---|
@@ -59,4 +65,4 @@ Recomputed from `events.jsonl` by the replay tool.
 | `held_fees` | list of `{account, layer, micro, until}` |
 | `deployed_agent` | commit hash |
 
-Anyone can recompute `state.json` from `events.jsonl` and the rules with the replay tool in `agent/`. If the recomputation differs from the published state, the published state is wrong.
+Anyone can recompute `state.json` from the event files and the rules with the replay tool in `agent/`. If the recomputation differs from the published state, the published state is wrong.

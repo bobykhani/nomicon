@@ -5,7 +5,7 @@
  * why Article 11 requires every input to be recorded.
  */
 import { readFileSync } from "node:fs";
-import { parseEvents, verifyEvent, type LedgerEvent } from "./ledger.js";
+import { verifyEvent, type LedgerEvent, readLedgerDir } from "./ledger.js";
 import { parseLaws, type Laws } from "./laws.js";
 import { tally, type Review } from "./tally.js";
 import { fold, type State } from "./state.js";
@@ -93,7 +93,7 @@ export function replay(events: LedgerEvent[], lawsByHash: Map<string, string>, r
 }
 
 export function replayFromFiles(repoRoot: string, now: number, extraLaws: Map<string, string> = new Map()): ReplayResult {
-  const events = parseEvents(readFileSync(`${repoRoot}/ledger/events.jsonl`, "utf8"));
+  const events = readLedgerDir(`${repoRoot}/ledger`);
   const rawLaws = readFileSync(`${repoRoot}/laws.json`, "utf8");
   const rawSchema = readFileSync(`${repoRoot}/laws.schema.json`, "utf8");
   const lawsByHash = new Map(extraLaws);

@@ -592,12 +592,15 @@ export class Runtime {
     const head = this.d.ledger.headHash();
     if (head === this.lastPublishedHead) return;
     const state = this.state(now);
-    const serialized = this.events.map((e) => JSON.stringify(e, (_k, v) => (typeof v === "bigint" ? v.toString() : v))).join("\n") + (this.events.length ? "\n" : "");
+    // Only segments with new events travel; older days are already in the repository.
+    const names = this.d.ledger.dirtySegments();
     await this.d.github.publishLedger([
-      { path: "ledger/events.jsonl", content: serialized },
+      ...names.map((n) => ({ path: `ledger/events/${n}.jsonl`, content: this.d.ledger.segmentContent(n) })),
+      { path: "ledger/head.json", content: this.d.ledger.headJson() },
       { path: "ledger/state.json", content: serializeState(state) },
       { path: "ledger/questions.json", content: JSON.stringify(buildIndex(state.questions, now), null, 2) + "\n" },
     ], `ledger: event ${this.d.ledger.head}`);
+    this.d.ledger.markPublished(names);
     this.lastPublishedHead = head;
   }
 }

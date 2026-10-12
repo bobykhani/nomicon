@@ -182,3 +182,7 @@ Attention is the ceiling on growth: a merge needs three reviews, and nothing in 
 
 Twenty percent of all weighted accounts is a fine quorum for fifty members and an impossible one for fifty thousand: ten thousand votes on every rule change means the Laws freeze, and a frozen Laws vote cannot lower its own quorum. The quorum is now the greater of five and the square root of the number of accounts holding mature weight: 10 at a hundred members, 100 at ten thousand, 1,000 at a million. Legitimacy still scales with size, the two-thirds majority and the per-account cap still carry the protection against capture, and the number stays reachable at any size. The root is taken in integers so every replay agrees.
 
+## D46. The ledger is one file per day
+
+A single append-only file is simple until it is large: every publish rewrote the whole of it, every reader downloaded all of it, and at thousands of events a day both stop working. The ledger is now `ledger/events/YYYY-MM-DD.jsonl`, one file per UTC day, with ids continuous across files and each event filed under the day of its own timestamp, plus `ledger/head.json` naming the latest event and the file that holds it. A publish carries only the days that changed, a follower reads the head and one file, and replay reads the files in name order. The old single file migrates with one command, and the agent refuses to append to it so the two layouts never mix.
+

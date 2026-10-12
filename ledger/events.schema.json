@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Nomicon ledger event",
-  "description": "One line of ledger/events.jsonl. Type-specific fields are documented in ledger/README.md and will be tightened when the agent is built.",
+  "description": "One line of a ledger/events/YYYY-MM-DD.jsonl file. Type-specific fields are documented in ledger/README.md and will be tightened when the agent is built.",
   "type": "object",
   "required": ["id", "at", "type", "sig"],
   "properties": {

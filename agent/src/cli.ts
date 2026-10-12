@@ -62,7 +62,7 @@ function signer(): Signer {
   const pem = existsSync(k) ? readFileSync(k, "utf8") : k;
   return new Signer(pem);
 }
-function ledger(): Ledger { return new Ledger(resolve(root(), "ledger/events.jsonl"), signer()); }
+function ledger(): Ledger { return new Ledger(resolve(root(), "ledger"), signer()); }
 
 /** The agent account in force: genesis, then any owner change of custody (Article 6). */
 function agentAccountInForce(events: Ledger["events"]): number | null {
@@ -156,9 +156,10 @@ async function main(argv: string[]): Promise<void> {
     }
     case "run": return run();
     case "record-payment": return recordPayment(Number(args[0]), args[1] ?? "");
+    case "migrate-ledger": { const n = Ledger.migrate(resolve(root(), "ledger")); console.log(`moved ${n} events into ledger/events/ by day; head.json written; events.jsonl removed`); return; }
     case "check": return check();
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check|migrate-ledger>");
       process.exitCode = 1;
   }
 }

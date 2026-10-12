@@ -50,7 +50,7 @@ laws: <sha256 of laws.json in force>
 qualified_voters: <count>
 ```
 
-and records the same in `ledger/events.jsonl`.
+and records the same in the ledger.
 
 ## Voting
 

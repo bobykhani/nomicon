@@ -87,7 +87,7 @@ Merges result only from votes, the arithmetic in these Laws, and, during bootstr
 
 All times are UTC seconds by the ledger's clock, except review times, which are the platform's own timestamps. Kilobytes are 1024 bytes. Weight arithmetic is in micro-USDC integers, rounded half to even.
 
-Nothing in a tally depends on anything outside the ledger: replay of every vote needs only `ledger/events.jsonl` and the Laws in force at its open.
+Nothing in a tally depends on anything outside the ledger: replay of every vote needs only the files under `ledger/events/` and the Laws in force at its open.
 
 ## Law 12. Questions and notices
 
