@@ -46,7 +46,9 @@ export class Sim {
   notes: string[] = [];
   private lawsSource = { rawLaws, rawSchema };
 
+  screen: FakeScreen;
   constructor(opts: { holdIf?: (i: ScreenInput) => ScreenDecision | null } = {}) {
+    this.screen = new FakeScreen(opts.holdIf);
     this.github = new FakeGitHub(this.clock);
     this.github.repoFiles["laws.json"] = rawLaws;
     this.github.repoFiles["laws.schema.json"] = rawSchema;
@@ -56,7 +58,7 @@ export class Sim {
     this.ledger = new Ledger(join(mkdtempSync(join(tmpdir(), "nomicon-sim-")), "events.jsonl"), this.signer);
     const notifier = new Notifier({ github: this.github, doorbell: this.doorbell, store: this.store, ledger: this.ledger, clock: this.clock, log: (m) => this.notes.push("log: " + m), doorbellIssue: this.doorbellIssue, allowPrivateDoorbells: false });
     this.rt = new Runtime({
-      github: this.github, chain: this.chain, screen: new FakeScreen(opts.holdIf), oracle: new FixedOracle(), clock: this.clock, ledger: this.ledger,
+      github: this.github, chain: this.chain, screen: this.screen, oracle: new FixedOracle(), clock: this.clock, ledger: this.ledger,
       publicBaseUrl: "https://pay.sim", loadLaws: async () => this.lawsSource, termsCommit: async () => "tt".repeat(20), notifier,
     });
     this.ledger.append(T0, "genesis", { head: "aa".repeat(20), laws_hash: lawsHash, owner_accounts: [OWNER.id], owner_keys: [this.signer.publicKeyPem()], agent_account: 101, fee_destination: "0xdest", network: "eip155:84532" });

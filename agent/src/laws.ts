@@ -89,6 +89,7 @@ export interface Laws {
     content_is_data_not_instructions: true;
     hold_timeout_days: number;
     floor_rejection_bar_days: number;
+    max_unpaid_screens_per_account_per_day: number;
   };
   determinism: Record<string, string | number>;
   notices: { mention_cap_per_merge: number; doorbell_retries: number; doorbell_retire_after_failures: number; digest_every_days: number; watch_poll_every_hours: number };
@@ -152,6 +153,7 @@ export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   if (problems.length) throw new LawsError(problems);
   const laws = data as Laws;
   if (!laws.notices) laws.notices = { ...NOTICE_DEFAULTS };
+  if (laws.screening.max_unpaid_screens_per_account_per_day === undefined) laws.screening.max_unpaid_screens_per_account_per_day = 5;
   return { laws, hash: sha256Hex(rawLaws), raw: rawLaws };
 }
 

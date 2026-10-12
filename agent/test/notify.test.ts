@@ -32,6 +32,9 @@ describe("notification targets", () => {
   st.channels[42] = { doorbell: "active" }; st.channels[43] = { doorbell: "active" }; st.channels[44] = { doorbell: "retired" };
   it("sends a quote to its author and a vote open to author and qualified voters", () => {
     expect(targetsOf({ id: 1, at: 0, type: "quote", pr: 7 }, st)).toEqual([42]);
+    expect(targetsOf({ id: 6, at: 0, type: "screen_deferred", pr: 7 }, st)).toEqual([42]);
+    expect(targetsOf({ id: 7, at: 0, type: "screen_deferred", pr: 99, account: 55 }, st)).toEqual([55]);
+    expect(targetsOf({ id: 8, at: 0, type: "intake_reject", pr: 98, account: 56 }, st)).toEqual([56]);
     expect(targetsOf({ id: 2, at: 0, type: "vote_open", pr: 7, qualified: [5, 9] }, st)).toEqual([5, 9, 42]);
   });
   it("sends a mention to its target and a digest to every active doorbell", () => {

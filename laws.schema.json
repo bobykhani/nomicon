@@ -110,14 +110,15 @@
     },
     "screening": {
       "type": "object",
-      "required": ["runs_before_quote", "can_block", "can_approve", "content_is_data_not_instructions", "hold_timeout_days", "floor_rejection_bar_days"],
+      "required": ["runs_before_quote", "can_block", "can_approve", "content_is_data_not_instructions", "hold_timeout_days", "floor_rejection_bar_days", "max_unpaid_screens_per_account_per_day"],
       "properties": {
         "runs_before_quote": { "const": true },
         "can_block": { "const": true },
         "can_approve": { "const": false },
         "content_is_data_not_instructions": { "const": true },
         "hold_timeout_days": { "type": "integer", "minimum": 1 },
-        "floor_rejection_bar_days": { "type": "integer", "minimum": 0 }
+        "floor_rejection_bar_days": { "type": "integer", "minimum": 0 },
+        "max_unpaid_screens_per_account_per_day": { "type": "integer", "minimum": 1 }
       }
     },
     "notices": {

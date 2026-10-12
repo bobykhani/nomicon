@@ -194,6 +194,23 @@ export class Runtime {
       await this.d.github.close(pr.number);
       return;
     }
+    // Law 10: an earlier pass on this exact head, or an owner release, means no new screening is needed.
+    const released = this.events.some((e) => e.type === "hold_resolved" && e["decision"] === "release" && Number(e["pr"]) === pr.number);
+    const passedBefore = this.events.some((e) => e.type === "quote" && Number(e["pr"]) === pr.number && String(e["head"]) === pr.headSha);
+    const screening: "model" | "reused" | "released" = released ? "released" : passedBefore ? "reused" : "model";
+    // Law 10: each account may have only so many unpaid submissions screened per day. Checked from the ledger
+    // alone, before any platform call, so a flood of junk pull requests costs neither screening nor API budget.
+    if (screening === "model") {
+      const limit = laws.screening.max_unpaid_screens_per_account_per_day;
+      const unpaid = this.unpaidScreensLastDay(pr.author.id, now);
+      if (unpaid >= limit) {
+        if (!this.events.some((e) => e.type === "screen_deferred" && Number(e["pr"]) === pr.number && String(e["head"]) === pr.headSha)) {
+          this.d.ledger.append(now, "screen_deferred", { pr: pr.number, head: pr.headSha, account: pr.author.id, unpaid_screens: unpaid, limit });
+          await this.d.github.comment(pr.number, `Waiting to be screened: this account already has ${unpaid} screened submissions from the last 24 hours that are unpaid, and the Laws allow ${limit} (Law 10). Paying one of those quotes frees a place at once; otherwise places free themselves 24 hours after each screening. This submission will be screened automatically then. Nothing is charged for waiting.`);
+        }
+        return;
+      }
+    }
     const [files, commits, existing] = await Promise.all([this.d.github.listFiles(pr.number), this.d.github.listCommits(pr.number), this.d.github.listPaths(pr.baseSha)]);
     const result = intake({ files, existingPaths: existing, commits }, laws);
     if (!result.ok) {
@@ -202,9 +219,8 @@ export class Runtime {
       await this.d.github.close(pr.number);
       return;
     }
-    // Law 10: screen before any quote, unless the owner already released a hold on this pull request.
-    const released = this.events.some((e) => e.type === "hold_resolved" && e["decision"] === "release" && Number(e["pr"]) === pr.number);
-    if (!released) {
+    // Law 10: screen before any quote.
+    if (screening === "model") {
       const contents = await Promise.all(files.filter((f) => f.status !== "removed").map(async (f) => ({ path: f.path, content: await this.d.github.readFile(pr.headSha, f.path) })));
       let decision;
       try { decision = await this.d.screen.screen({ pr: pr.number, title: pr.title, body: pr.body, files: contents }); }
@@ -231,7 +247,7 @@ export class Runtime {
     const ev = this.d.ledger.append(now, "quote", {
       pr: pr.number, head: pr.headSha, account: pr.author.id, login: pr.author.login, layer: result.layer, network,
       fee_micro: held ? 0n : q.feeMicro, base_micro: q.baseMicro, multiplier: q.multiplier, concurrency: q.concurrency, size_kb: q.sizeKbCharged,
-      weight_micro: q.weightMicro, terms_commit: terms, destination: state.fee.destination, expires, held_fee_pr: held?.pr ?? null,
+      weight_micro: q.weightMicro, terms_commit: terms, destination: state.fee.destination, expires, held_fee_pr: held?.pr ?? null, screening,
     });
     if (held) {
       this.d.ledger.append(now, "payment", { pr: pr.number, tx: null, amount_micro: 0n, quoted_micro: 0n, from: null, cad_value: "0.00", matched: true, from_held_fee_pr: held.pr });
@@ -239,6 +255,18 @@ export class Runtime {
       return;
     }
     await this.d.github.comment(pr.number, quoteComment(ev, laws, this.d.publicBaseUrl));
+  }
+
+  /** Model screenings of this account's submissions in the last day whose submission has not been paid. */
+  private unpaidScreensLastDay(account: number, now: number): number {
+    const paid = new Set<number>();
+    for (const e of this.events) if (e.type === "payment" && e["matched"] !== false) paid.add(Number(e["pr"]));
+    let n = 0;
+    for (const e of this.events) {
+      if (now - e.at >= 86400 || Number(e["account"]) !== account || paid.has(Number(e["pr"]))) continue;
+      if (e.type === "screen_hold" || (e.type === "quote" && (e["screening"] ?? "model") === "model")) n++;
+    }
+    return n;
   }
 
   private async openVote(pr: PullInfo, quote: LedgerEvent, laws: Laws, now: number, state: State): Promise<void> {

@@ -348,4 +348,25 @@ export const scenarios: Scenario[] = [
     s.check("the next tick retried and merged, once", merged(s, b) && s.eventsFor(b.number).filter((e) => e.type === "merge").length === 1);
     s.check("both authors hold weight", s.state().weights[String(N.id)] !== undefined && s.state().weights[String(M.id)] !== undefined);
   }),
+
+  sc("screen-spam", "One account opens seven submissions and pays for none. Five are screened; two wait without being screened or touching the platform, commented on once. Paying one quote frees a place; a day later the rest are screened. Quotes that lapse and renew reuse the earlier pass instead of screening the same content again.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const before = s.screen.calls;
+    const prs = [];
+    for (let i = 0; i < 7; i++) prs.push(s.github.open(X1, { [`world/spam/${i}.md`]: `junk ${i}` }));
+    await s.tick();
+    s.check("five submissions were screened and quoted", s.screen.calls - before === 5 && prs.filter((p) => s.rt.quoteFor(p.number)).length === 5, String(s.screen.calls - before));
+    const deferred = prs.filter((p) => s.eventsFor(p.number).some((e) => e.type === "screen_deferred"));
+    s.check("the other two wait, each recorded and commented on once", deferred.length === 2 && deferred.every((p) => p.comments.filter((c) => c.startsWith("Waiting to be screened")).length === 1));
+    await s.tick(); await s.tick();
+    s.check("waiting submissions are not screened again or re-commented on later ticks", s.screen.calls - before === 5 && deferred.every((p) => p.comments.length === 1 && s.eventsFor(p.number).filter((e) => e.type === "screen_deferred").length === 1));
+    await s.pay(prs[0]!.number); await s.tick();
+    s.check("paying one quote frees a place and one waiting submission is screened", s.screen.calls - before === 6 && deferred.filter((p) => s.rt.quoteFor(p.number)).length === 1, String(s.screen.calls - before));
+    const callsBeforeLapse = s.screen.calls;
+    await s.advance(26 * H, H);
+    s.check("a day later the last waiting submission is screened", deferred.every((p) => s.eventsFor(p.number).some((e) => e.type === "quote")));
+    const renewed = s.events.filter((e) => e.type === "quote" && e["screening"] === "reused");
+    s.check("lapsed quotes were renewed without screening the same content again", renewed.length >= 4 && s.screen.calls - callsBeforeLapse === 1, `renewed ${renewed.length}, new calls ${s.screen.calls - callsBeforeLapse}`);
+    s.check("another account is unaffected by this account's limit", await (async () => { const n = s.screen.calls; const p = await s.submit(M, { "world/m.md": "fine" }); return s.screen.calls === n + 1 && s.rt.quoteFor(p.number) !== null; })());
+  }),
 ];

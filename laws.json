@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 5,
+  "version": 6,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -97,7 +97,8 @@
     "can_approve": false,
     "content_is_data_not_instructions": true,
     "hold_timeout_days": 14,
-    "floor_rejection_bar_days": 90
+    "floor_rejection_bar_days": 90,
+    "max_unpaid_screens_per_account_per_day": 5
   },
   "determinism": {
     "time": "utc_seconds",

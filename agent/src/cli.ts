@@ -28,7 +28,7 @@
  * NOMICON_DATA_DIR (private directory for doorbell URLs; default <repo root>/../nomicon-private),
  * CDP_API_KEY_ID + CDP_API_KEY_SECRET (Coinbase facilitator, required on Base mainnet) or X402_FACILITATOR_URL (testnets),
  * ANCHOR_PRIVATE_KEY (gas wallet for ledger anchors, required on mainnet), NOMICON_USDC_CAD (fixed rate; unset = Bank of Canada daily),
- * NOMICON_TRUST_PROXY=1 behind a reverse proxy that sets X-Forwarded-For,
+ * NOMICON_SCREEN_MODEL (default claude-opus-5-5), NOMICON_TRUST_PROXY=1 behind a reverse proxy that sets X-Forwarded-For,
  * NOMICON_DOORBELL_ALLOW_PRIVATE=1 accepts http and private doorbell addresses (local testing only).
  */
 import { generateKeyPairSync } from "node:crypto";
@@ -203,7 +203,7 @@ async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseCh
   if (allowPrivate) log("WARNING: NOMICON_DOORBELL_ALLOW_PRIVATE is set; private doorbell addresses are accepted. Never run like this in production.");
   const notifier = new Notifier({ github, doorbell: new HttpDoorbell({ allowPrivate }), store: new FileDoorbellStore(resolve(dataDir, "doorbells.json")), ledger: led, clock: { now }, log, doorbellIssue, allowPrivateDoorbells: allowPrivate });
   const rt = new Runtime({
-    github, chain, screen: new ClaudeScreen(), oracle, clock: { now }, ledger: led, publicBaseUrl, notifier,
+    github, chain, screen: new ClaudeScreen(process.env["NOMICON_SCREEN_MODEL"] || undefined), oracle, clock: { now }, ledger: led, publicBaseUrl, notifier,
     loadLaws: async () => ({ rawLaws: await github.readFile("main", "laws.json"), rawSchema: await github.readFile("main", "laws.schema.json") }),
     termsCommit: async () => env("NOMICON_TERMS_COMMIT", "main"),
     log,

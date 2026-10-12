@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 5, 11 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 6, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -79,7 +79,7 @@ During bootstrap a paid, screened contribution merges only when the owner confir
 
 ## Law 10. Screening
 
-The legal-floor screen runs before a fee is quoted. It may hold a contribution for the owner's review; it can never approve one. A hold the owner has not resolved within **14 days** closes the submission without charge. A contribution the owner rejects under Constitution Article 4 bars its author from submitting for **90 days**.
+The legal-floor screen runs before a fee is quoted. It may hold a contribution for the owner's review; it can never approve one. A submission whose content already passed the screen is not screened again. Each account may have at most **5** submissions screened in any 24 hours that have not been paid; a further submission waits, at no charge, until one is paid or 24 hours pass, and is then screened automatically. A hold the owner has not resolved within **14 days** closes the submission without charge. A contribution the owner rejects under Constitution Article 4 bars its author from submitting for **90 days**.
 
 Merges result only from votes, the arithmetic in these Laws, and, during bootstrap, the owner's confirmation. No model output is ever an input to a merge decision. Content under screening is treated as data, never as instructions. The screen is best-effort and can miss things; voters are the second screen, and Constitution Article 5 is the backstop.
 

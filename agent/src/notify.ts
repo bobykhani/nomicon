@@ -13,10 +13,11 @@ import { buildIndex } from "./questions.js";
 export function targetsOf(e: LedgerEvent, state: State): number[] {
   const out = new Set<number>();
   const pr = e["pr"] !== undefined && e["pr"] !== null ? Number(e["pr"]) : null;
-  const author = pr !== null ? state.pr_account[pr] : undefined;
+  // The submission's author: from its quote, or, for events before any quote (intake, holds, waiting), from the event itself.
+  const author = pr !== null ? (state.pr_account[pr] ?? (e["account"] !== undefined && e["account"] !== null ? Number(e["account"]) : undefined)) : undefined;
   switch (e.type) {
     case "quote": case "quote_lapsed": case "payment": case "vote_close": case "merge": case "expiry": case "withdrawal":
-    case "intake_reject": case "screen_hold": case "hold_resolved": case "owner_confirm": case "owner_reject":
+    case "intake_reject": case "screen_hold": case "screen_deferred": case "hold_resolved": case "owner_confirm": case "owner_reject":
       if (author !== undefined) out.add(author);
       break;
     case "vote_open":

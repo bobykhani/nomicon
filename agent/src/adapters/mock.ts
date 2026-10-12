@@ -127,8 +127,9 @@ export class FakeChain implements ChainPort {
 }
 
 export class FakeScreen implements ScreenPort {
+  calls = 0;
   constructor(private holdIf: (input: ScreenInput) => ScreenDecision | null = () => null) {}
-  async screen(input: ScreenInput): Promise<ScreenDecision> { return this.holdIf(input) ?? { decision: "pass" }; }
+  async screen(input: ScreenInput): Promise<ScreenDecision> { this.calls++; return this.holdIf(input) ?? { decision: "pass" }; }
 }
 
 export class FixedOracle implements PriceOracle { async usdcToCad(): Promise<string> { return "1.37"; } }
