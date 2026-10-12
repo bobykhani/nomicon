@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 9,
+  "version": 10,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -13,7 +13,8 @@
     "laws": {
       "window_hours": 168,
       "quorum_yes_voters": 5,
-      "quorum_percent_of_weighted_accounts": 20,
+      "quorum_percent_of_weighted_accounts": 0,
+      "quorum_square_root": true,
       "majority": "two_thirds_weight",
       "tie": "expire",
       "effect_delay_days": 14

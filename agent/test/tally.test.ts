@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tally, type Review } from "../src/tally.js";
+import { ceilSqrt, tally, type Review } from "../src/tally.js";
 import { laws } from "./helpers.js";
 
 const t0 = 1_800_000_000;
@@ -90,6 +90,13 @@ describe("tally", () => {
     const fiveYes = [1, 2, 3, 4, 5].map((a) => rv(a, "APPROVED")).concat([rv(6, "CHANGES_REQUESTED"), rv(7, "CHANGES_REQUESTED")]);
     const heavyNo = new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n], [6, 20n], [7, 20n]]);
     expect(tally(base({ layer: "laws", qualified: q, matureAtClose: heavyNo, weightedAccountsAtOpen: 7, reviews: fiveYes }), laws).result).toBe("reject");
-    expect(tally(base({ layer: "laws", weightedAccountsAtOpen: 40, reviews: [] }), laws).quorum).toBe(8);
+    for (const [members, quorum] of [[4, 5], [40, 7], [100, 10], [101, 11], [10_000, 100], [1_000_000, 1000]] as const) expect(tally(base({ layer: "laws", weightedAccountsAtOpen: members, reviews: [] }), laws).quorum).toBe(quorum);
+    expect(tally(base({ layer: "world", weightedAccountsAtOpen: 1_000_000, reviews: [] }), laws).quorum).toBe(3);
+  });
+});
+
+describe("integer square root", () => {
+  it("returns the smallest integer whose square is at least n", () => {
+    for (const [n, r] of [[0, 0], [1, 1], [2, 2], [4, 2], [5, 3], [99, 10], [100, 10], [101, 11], [999_999, 1000], [1_000_000, 1000], [1_000_001, 1001]]) expect(ceilSqrt(n)).toBe(r);
   });
 });

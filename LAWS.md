@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 9, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 10, 12 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -25,7 +25,7 @@ A **qualified voter** on a contribution is a non-author account whose mature wei
 
 ## Law 3. Laws procedure
 
-A change to any Laws file is decided like the World procedure, with these differences: the window is **168 hours**; the quorum is the greater of **5** and **20 percent** of the accounts holding mature weight at open, rounded up; yes must hold at least **two thirds** of the counted weight; the fee uses a layer multiplier of **10**; and the change takes effect **14 days** after it merges. Votes open before that moment are governed by the rules recorded at their open.
+A change to any Laws file is decided like the World procedure, with these differences: the window is **168 hours**; the quorum is the greater of **5** and the **square root** of the number of accounts holding mature weight at open, rounded up; yes must hold at least **two thirds** of the counted weight; the fee uses a layer multiplier of **10**; and the change takes effect **14 days** after it merges. Votes open before that moment are governed by the rules recorded at their open.
 
 ## Law 4. Weight
 

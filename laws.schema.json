@@ -155,6 +155,7 @@
         "window_hours": { "type": "number", "minimum": 24 },
         "quorum_yes_voters": { "type": "integer", "minimum": 3 },
         "quorum_percent_of_weighted_accounts": { "type": "number", "minimum": 0, "maximum": 100 },
+        "quorum_square_root": { "type": "boolean" },
         "majority": { "enum": ["simple_weight", "two_thirds_weight"] },
         "tie": { "const": "expire" }
       }

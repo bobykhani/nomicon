@@ -12,6 +12,8 @@ export interface Procedure {
   window_hours: number;
   quorum_yes_voters: number;
   quorum_percent_of_weighted_accounts: number;
+  /** Law 3: quorum also at least the square root of the accounts holding mature weight at open. */
+  quorum_square_root?: boolean;
   majority: "simple_weight" | "two_thirds_weight";
   tie: "expire";
   effect_delay_days?: number;
@@ -120,6 +122,7 @@ export function article9AProblems(l: Laws): string[] {
   if (a.window_hours < w.window_hours) p.push("laws window easier than world");
   if (a.quorum_yes_voters < w.quorum_yes_voters) p.push("laws quorum easier than world");
   if (a.quorum_percent_of_weighted_accounts < w.quorum_percent_of_weighted_accounts) p.push("laws quorum percent easier than world");
+  if (w.quorum_square_root && !a.quorum_square_root) p.push("laws quorum scaling easier than world");
   if (l.fee.layer_multiplier.laws <= l.fee.layer_multiplier.world) p.push("laws fee multiplier not stricter than world");
   if (l.weight.decay_half_life_days < ARTICLE_9A.minDecayHalfLifeDays) p.push("half-life below 30 days");
   if (l.weight.inactive_half_life_days < ARTICLE_9A.minDecayHalfLifeDays) p.push("inactive half-life below 30 days");

@@ -55,10 +55,20 @@ export function countedReviews(input: TallyInput): Map<number, Review> {
   return latest;
 }
 
+/** Smallest integer r with r × r ≥ n, computed in integers so every replay agrees. */
+export function ceilSqrt(n: number): number {
+  if (n <= 0) return 0;
+  let r = Math.floor(Math.sqrt(n));
+  while (r * r < n) r++;
+  while (r > 0 && (r - 1) * (r - 1) >= n) r--;
+  return r;
+}
+
 export function quorumFor(layer: Layer, weightedAccounts: number, laws: Laws): { quorum: number; procedure: Procedure } {
   const procedure = layer === "laws" ? laws.vote.laws : laws.vote.world;
   const pct = Math.ceil((procedure.quorum_percent_of_weighted_accounts / 100) * weightedAccounts);
-  return { quorum: Math.max(procedure.quorum_yes_voters, pct), procedure };
+  const root = procedure.quorum_square_root ? ceilSqrt(weightedAccounts) : 0;
+  return { quorum: Math.max(procedure.quorum_yes_voters, pct, root), procedure };
 }
 
 export function tally(input: TallyInput, laws: Laws): TallyResult {
