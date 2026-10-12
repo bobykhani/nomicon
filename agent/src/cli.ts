@@ -239,7 +239,7 @@ async function check(): Promise<void> {
     publicBaseUrl: process.env["NOMICON_PUBLIC_URL"] ?? "", facilitator, anchorKey: process.env["ANCHOR_PRIVATE_KEY"] ?? null,
     allowPrivate: process.env["NOMICON_DOORBELL_ALLOW_PRIVATE"] === "1", dataDir: env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private")),
     anthropicKey: !!process.env["ANTHROPIC_API_KEY"],
-    github: async () => { const { github, identity } = await githubFromEnv(); const pulls = await github.listOpenPulls(); return `${identity.login} (${identity.id}), ${pulls.length} open pull request(s) readable`; },
+    github: async () => { const { github, identity } = await githubFromEnv(); const pulls = await github.listOpenPulls(); return { ...identity, detail: `${identity.login} (${identity.id}), ${pulls.length} open pull request(s) readable` }; },
     ledgerKey: () => { const s = signer(); return s.publicKeyPem().split("\n")[1]?.slice(0, 16) ?? ""; },
     ledger: () => { const l = ledger(); const g = l.events.find((e) => e.type === "genesis"); return g ? { agentAccount: agentAccountInForce(l.events) ?? Number(g["agent_account"]), destination: replayFromFiles(root(), now()).state.fee.destination ?? String(g["fee_destination"]), network: String(g["network"]) } : null; },
   });

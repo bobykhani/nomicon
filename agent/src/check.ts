@@ -23,7 +23,7 @@ export interface CheckDeps {
   allowPrivate: boolean;
   dataDir: string;
   anthropicKey: boolean;
-  github: () => Promise<string>;
+  github: () => Promise<{ id: number; login: string; detail: string }>;
   ledgerKey: () => string;
   ledger: () => { agentAccount: number; destination: string; network: string } | null;
 }
@@ -65,7 +65,8 @@ export async function preflight(d: CheckDeps): Promise<CheckResult[]> {
   push("public url", /^https:\/\//.test(d.publicBaseUrl) || (!mainnet && /^http:\/\//.test(d.publicBaseUrl)), d.publicBaseUrl || "NOMICON_PUBLIC_URL is not set");
   push("doorbells", !(d.allowPrivate && mainnet), d.allowPrivate ? "private addresses allowed (NOMICON_DOORBELL_ALLOW_PRIVATE=1)" : "public https addresses only", mainnet ? "fail" : "warn");
   push("screen", d.anthropicKey, d.anthropicKey ? "ANTHROPIC_API_KEY is set" : "ANTHROPIC_API_KEY is not set; Law 10 screening cannot run");
-  await run("github", async () => [true, await d.github()]);
+  let identity: { id: number; login: string } | null = null;
+  await run("github", async () => { const g = await d.github(); identity = { id: g.id, login: g.login }; return [true, g.detail]; });
   await run("ledger key", async () => [true, `signing key loads; public key begins ${d.ledgerKey()}`]);
   await run("data dir", async () => { mkdirSync(d.dataDir, { recursive: true }); const p = join(d.dataDir, ".write-test"); writeFileSync(p, "ok"); rmSync(p); return [true, `${d.dataDir} is writable`]; });
   await run("ledger", async () => {
@@ -73,6 +74,8 @@ export async function preflight(d: CheckDeps): Promise<CheckResult[]> {
     if (!g) return [true, "no genesis yet; run `nomicon genesis` when the Constitution placeholders are filled"];
     const problems: string[] = [];
     if (g.network !== d.network) problems.push(`genesis network ${g.network} differs from NOMICON_NETWORK ${d.network}`);
+    const who = identity as { id: number; login: string } | null;
+    if (who && who.id !== g.agentAccount) problems.push(`the configured GitHub identity ${who.login} (${who.id}) is not the agent account ${g.agentAccount} in force; the agent will refuse to run until the owner records the change with \`nomicon set-agent-account "<reason>"\``);
     if (d.destination && g.destination.toLowerCase() !== d.destination.toLowerCase()) problems.push(`destination in force ${g.destination} differs from NOMICON_FEE_DESTINATION; use rotate-destination, not the environment`);
     return [problems.length === 0, problems.length ? problems.join("; ") : `agent account ${g.agentAccount}, destination ${g.destination}, network ${g.network} in force`];
   });

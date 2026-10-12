@@ -129,21 +129,31 @@ export class GitHubAdapter implements GitHubPort {
     await this.octokit.pulls.update({ owner: this.owner, repo: this.repo, pull_number: n, state: "closed" });
   }
 
+  /**
+   * All ledger files in one commit, so the repository never holds an events file and a state file that disagree,
+   * and each publish costs one commit (and one Pages build). Retried when main moved underneath, e.g. a merge.
+   */
   async publishLedger(files: Array<{ path: string; content: string }>, message: string): Promise<void> {
-    for (const f of files) {
-      let sha: string | undefined;
-      try {
-        const { data } = await this.octokit.repos.getContent({ owner: this.owner, repo: this.repo, path: f.path, ref: this.ledgerBranch });
-        if (!Array.isArray(data) && data.type === "file") sha = data.sha;
-      } catch (e) {
-        if ((e as { status?: number }).status !== 404) throw e;
+    const o = { owner: this.owner, repo: this.repo };
+    for (let attempt = 0; ; attempt++) {
+      const { data: ref } = await this.octokit.git.getRef({ ...o, ref: `heads/${this.ledgerBranch}` });
+      const { data: head } = await this.octokit.git.getCommit({ ...o, commit_sha: ref.object.sha });
+      const tree = [];
+      for (const f of files) {
+        const { data: blob } = await this.octokit.git.createBlob({ ...o, content: f.content, encoding: "utf-8" });
+        tree.push({ path: f.path, mode: "100644" as const, type: "blob" as const, sha: blob.sha });
       }
-      const params: Parameters<Octokit["repos"]["createOrUpdateFileContents"]>[0] = {
-        owner: this.owner, repo: this.repo, path: f.path, message, branch: this.ledgerBranch,
-        content: Buffer.from(f.content, "utf8").toString("base64"),
-      };
-      if (sha) params.sha = sha;
-      await this.octokit.repos.createOrUpdateFileContents(params);
+      const { data: newTree } = await this.octokit.git.createTree({ ...o, base_tree: head.tree.sha, tree });
+      if (newTree.sha === head.tree.sha) return; // nothing changed
+      const { data: commit } = await this.octokit.git.createCommit({ ...o, message, tree: newTree.sha, parents: [head.sha] });
+      try {
+        await this.octokit.git.updateRef({ ...o, ref: `heads/${this.ledgerBranch}`, sha: commit.sha, force: false });
+        return;
+      } catch (e) {
+        const status = (e as { status?: number }).status;
+        if ((status === 422 || status === 409) && attempt < 4) continue; // main moved; rebuild on the new head
+        throw e;
+      }
     }
   }
 
