@@ -73,8 +73,8 @@ export async function preflight(d: CheckDeps): Promise<CheckResult[]> {
     if (!g) return [true, "no genesis yet; run `nomicon genesis` when the Constitution placeholders are filled"];
     const problems: string[] = [];
     if (g.network !== d.network) problems.push(`genesis network ${g.network} differs from NOMICON_NETWORK ${d.network}`);
-    if (d.destination && g.destination.toLowerCase() !== d.destination.toLowerCase()) problems.push(`genesis destination ${g.destination} differs from NOMICON_FEE_DESTINATION; use rotate-destination, not the environment`);
-    return [problems.length === 0, problems.length ? problems.join("; ") : `genesis names agent account ${g.agentAccount}, destination ${g.destination}, network ${g.network}`];
+    if (d.destination && g.destination.toLowerCase() !== d.destination.toLowerCase()) problems.push(`destination in force ${g.destination} differs from NOMICON_FEE_DESTINATION; use rotate-destination, not the environment`);
+    return [problems.length === 0, problems.length ? problems.join("; ") : `agent account ${g.agentAccount}, destination ${g.destination}, network ${g.network} in force`];
   });
   return out;
 }

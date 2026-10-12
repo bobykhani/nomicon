@@ -12,6 +12,7 @@
  *   hold-reject <pr> <reason>      resolve a screening hold by rejecting it (applies the bar)
  *   takedown <pr,...> <reason> [notice_hash]
  *   rotate-destination <address> <reason>
+ *   set-agent-account <reason>   record that the agent now acts as the GitHub identity its current credentials resolve to
  *   maintenance <from_iso> <to_iso> <reason>
  *   end-bootstrap <reason>
  *   deploy <commit> <reason>
@@ -62,6 +63,13 @@ function signer(): Signer {
   return new Signer(pem);
 }
 function ledger(): Ledger { return new Ledger(resolve(root(), "ledger/events.jsonl"), signer()); }
+
+/** The agent account in force: genesis, then any owner change of custody (Article 6). */
+function agentAccountInForce(events: Ledger["events"]): number | null {
+  let id: number | null = null;
+  for (const e of events) if ((e.type === "genesis" || e.type === "agent_account_change") && e["agent_account"] !== undefined) id = Number(e["agent_account"]);
+  return id;
+}
 
 async function githubFromEnv(): Promise<{ github: GitHubAdapter; identity: GitHubIdentity }> {
   const owner = env("GITHUB_OWNER"), repo = env("GITHUB_REPO");
@@ -123,6 +131,14 @@ async function main(argv: string[]): Promise<void> {
     }
     case "takedown": ownerCommand("takedown", { prs: args[0]!.split(",").map(Number), reason: args[1], notice_hash: args[2] ?? null }); return;
     case "rotate-destination": ownerCommand("destination_change", { destination: args[0], reason: args.slice(1).join(" ") }); return;
+    case "set-agent-account": {
+      const reason = args.join(" ").trim();
+      if (!reason) throw new Error('usage: nomicon set-agent-account "<reason>"');
+      const { identity } = await githubFromEnv();
+      if (agentAccountInForce(ledger().events) === identity.id) { console.log(`${identity.login} (${identity.id}) is already the agent account in force`); return; }
+      ownerCommand("agent_account_change", { agent_account: identity.id, login: identity.login, reason });
+      return;
+    }
     case "maintenance": ownerCommand("declare", { what: "maintenance_window", from: Math.floor(Date.parse(args[0]!) / 1000), to: Math.floor(Date.parse(args[1]!) / 1000), reason: args.slice(2).join(" ") }); return;
     case "end-bootstrap": ownerCommand("declare", { what: "bootstrap_end", reason: args.join(" ") }); return;
     case "deploy": ownerCommand("deploy", { commit: args[0], reason: args.slice(1).join(" ") }); return;
@@ -142,7 +158,7 @@ async function main(argv: string[]): Promise<void> {
     case "record-payment": return recordPayment(Number(args[0]), args[1] ?? "");
     case "check": return check();
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check>");
       process.exitCode = 1;
   }
 }
@@ -170,9 +186,8 @@ async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseCh
   const network = env("NOMICON_NETWORK", "eip155:84532") as Network;
   const { github, identity } = await githubFromEnv();
   const led = ledger();
-  const genesis = led.events.find((e) => e.type === "genesis");
-  const agentAccount = genesis ? Number(genesis["agent_account"]) : null;
-  if (agentAccount !== null && agentAccount !== identity.id) throw new Error(`GitHub identity ${identity.login} (${identity.id}) is not the agent account ${agentAccount} named at genesis; quotes would come from the wrong account`);
+  const agentAccount = agentAccountInForce(led.events);
+  if (agentAccount !== null && agentAccount !== identity.id) throw new Error(`GitHub identity ${identity.login} (${identity.id}) is not the agent account ${agentAccount} in force in the ledger; quotes would come from the wrong account. If the agent's identity changed on purpose, record it with \`nomicon set-agent-account "<reason>"\``);
   const log = (m: string) => console.log(new Date().toISOString(), m);
   log(`github identity: ${identity.login} (${identity.id})`);
   const anchorKey = process.env["ANCHOR_PRIVATE_KEY"] as `0x${string}` | undefined;
@@ -226,7 +241,7 @@ async function check(): Promise<void> {
     anthropicKey: !!process.env["ANTHROPIC_API_KEY"],
     github: async () => { const { github, identity } = await githubFromEnv(); const pulls = await github.listOpenPulls(); return `${identity.login} (${identity.id}), ${pulls.length} open pull request(s) readable`; },
     ledgerKey: () => { const s = signer(); return s.publicKeyPem().split("\n")[1]?.slice(0, 16) ?? ""; },
-    ledger: () => { const l = ledger(); const g = l.events.find((e) => e.type === "genesis"); return g ? { agentAccount: Number(g["agent_account"]), destination: String(g["fee_destination"]), network: String(g["network"]) } : null; },
+    ledger: () => { const l = ledger(); const g = l.events.find((e) => e.type === "genesis"); return g ? { agentAccount: agentAccountInForce(l.events) ?? Number(g["agent_account"]), destination: replayFromFiles(root(), now()).state.fee.destination ?? String(g["fee_destination"]), network: String(g["network"]) } : null; },
   });
   let failed = 0;
   for (const r of results) { if (!r.ok && r.severity === "fail") failed++; console.log(`${r.ok ? "ok  " : r.severity === "fail" ? "FAIL" : "warn"}  ${r.name}: ${r.detail}`); }

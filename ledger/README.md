@@ -27,6 +27,7 @@ One JSON object per line, append-only, in order. Every object has `id` (sequenti
 | `redaction` | content removed from ledger | `event_id`, `hash` |
 | `patch` / `deploy` | agent code | `commit`, `reason` |
 | `destination_change` | Article 7 | `destination`, `by` |
+| `agent_account_change` | owner custody of the agent's platform identity (Article 6), e.g. moving to a GitHub App or to a successor operator | `agent_account`, `login`, `reason`, `by` |
 | `declare` | bootstrap end, maintenance window | `what`, `constitution_hashes` |
 | `correction` | replay found an error | `event_id`, `evidence` |
 | `refusal` | agent refused a non-compliant laws.json | `laws_hash`, `reason` |

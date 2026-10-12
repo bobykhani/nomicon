@@ -29,7 +29,11 @@ Set, instead of `GITHUB_TOKEN`:
 
 On start the agent logs `github identity: nomicon-agent[bot] (<numeric id>)` and refuses to run if that id differs from the agent account named in the ledger's genesis event. For a new ledger, `nomicon genesis` records the App's id automatically when `NOMICON_AGENT_ACCOUNT` is unset. The numeric id also goes into `NOTICES.md`.
 
-Testing the App on `nomicon-sim` needs a fresh genesis there, since its current ledger names a personal account as the agent.
+An existing ledger that names a different agent account, such as `nomicon-sim`, whose ledger began under a personal token, switches with one owner command, run with the App credentials configured:
+
+    node --env-file=.env dist/cli.js set-agent-account "the agent now acts as its GitHub App"
+
+It records an `agent_account_change` event naming the identity the credentials resolve to. From then on only that identity may run the agent. The same command is how a successor operator under Constitution Article 14 takes over with their own App.
 
 ## Rotating the key
 

@@ -52,7 +52,7 @@ The Constitution names one ledger signing key and provides no way to replace it,
 
 ## Handing over
 
-Continuity under Constitution Article 14 means a successor operator can run the agent from this file, the repository, and the backups, with nothing that lived only in the previous operator's head. Keep this file true.
+Continuity under Constitution Article 14 means a successor operator can run the agent from this file, the repository, and the backups, with nothing that lived only in the previous operator's head. A successor runs under their own GitHub App: they install it, configure its credentials, and record the change with `nomicon set-agent-account "<reason>"` before the first start, since the agent refuses to run as any identity other than the one the ledger names. Keep this file true.
 
 ## Going to mainnet
 

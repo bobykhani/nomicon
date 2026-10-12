@@ -126,6 +126,9 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
     case "destination_change":
       s.fee.destination = String(e["destination"]);
       break;
+    case "agent_account_change":
+      s.agent_account = num(e["agent_account"]);
+      break;
     case "deploy":
       s.deployed_agent = String(e["commit"]);
       break;
