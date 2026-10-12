@@ -127,7 +127,7 @@ Every commit by a contributor carries a Developer Certificate of Origin sign-off
 
 ## Article 11. Transparency
 
-All votes, payments, agent decisions, holds, confirmations, rejections, patches, deployments and takedowns are public in `ledger/`. The ledger records every input to every decision, including each review with its account identifier and timestamp, each payment's transaction hash, and each tie-break block hash, so that replay needs nothing outside this repository and the fee network. Screening holds are recorded but are not replayable.
+All votes, payments, agent decisions, holds, confirmations, rejections, patches, deployments and takedowns are public in `ledger/`. The ledger records every input to every decision, including each review with its account identifier and timestamp, and each payment's transaction hash, so that replay needs nothing outside this repository and the fee network. Screening holds are recorded but are not replayable.
 
 The ledger is permanent except where Article 5 or the law requires removal; a removal is recorded as a redaction event that keeps the hash of what was removed. Ledger entries are signed with a key whose public half is `[LEDGER SIGNING PUBLIC KEY]`, and the hash of the ledger head is anchored on the fee network at every fee adjustment.
 

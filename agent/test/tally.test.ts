@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHash } from "node:crypto";
-import { tally, tieBit, type Review, type TallyInput } from "../src/tally.js";
+import { tally, type Review } from "../src/tally.js";
 import { laws } from "./helpers.js";
 
 const t0 = 1_800_000_000;
@@ -56,17 +55,28 @@ describe("tally", () => {
     expect(r.yesVoters).toBe(2);
     expect(r.result).toBe("expire");
   });
-  it("breaks an exact tie with the block-hash bit", () => {
-    const input = base({
+  it("treats equal weight as no decision: the contribution expires", () => {
+    const r = tally(base({
       qualified: new Set([1, 2, 3, 4, 5, 6]),
       reviews: [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED"), rv(4, "CHANGES_REQUESTED"), rv(5, "CHANGES_REQUESTED"), rv(6, "CHANGES_REQUESTED")],
       matureAtClose: new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n], [6, 10n]]),
-      tieBlockHash: "cd".repeat(32),
-    });
-    const r = tally(input, laws);
+    }), laws);
     expect(r.tie).toBe(true);
-    expect(r.result).toBe(r.tieBit === 0 ? "merge" : "reject");
-    expect(() => tally({ ...input, tieBlockHash: undefined } as TallyInput, laws)).toThrow();
+    expect(r.result).toBe("expire");
+  });
+  it("passes a Laws vote at exactly two thirds and rejects an equal split without calling it a tie", () => {
+    const q7 = new Set([1, 2, 3, 4, 5, 6, 7]);
+    const m7 = new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n], [6, 15n], [7, 10n]]);
+    const fiveYes = [1, 2, 3, 4, 5].map((a) => rv(a, "APPROVED")).concat([rv(6, "CHANGES_REQUESTED"), rv(7, "CHANGES_REQUESTED")]);
+    const exact = tally(base({ layer: "laws", qualified: q7, matureAtClose: m7, weightedAccountsAtOpen: 7, reviews: fiveYes }), laws);
+    expect(exact.yesMicro * 3n).toBe((exact.yesMicro + exact.noMicro) * 2n);
+    expect(exact.result).toBe("merge");
+    const q10 = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const m10 = new Map(Array.from({ length: 10 }, (_, i) => [i + 1, 10n] as [number, bigint]));
+    const split = [1, 2, 3, 4, 5].map((a) => rv(a, "APPROVED")).concat([6, 7, 8, 9, 10].map((a) => rv(a, "CHANGES_REQUESTED")));
+    const r = tally(base({ layer: "laws", qualified: q10, matureAtClose: m10, weightedAccountsAtOpen: 10, reviews: split }), laws);
+    expect(r.result).toBe("reject");
+    expect(r.tie).toBe(false);
   });
   it("needs two thirds and a larger quorum for the Laws", () => {
     const yes3no2 = [rv(1, "APPROVED"), rv(2, "APPROVED"), rv(3, "APPROVED"), rv(4, "CHANGES_REQUESTED"), rv(5, "CHANGES_REQUESTED")];
@@ -81,13 +91,5 @@ describe("tally", () => {
     const heavyNo = new Map([[1, 10n], [2, 10n], [3, 10n], [4, 10n], [5, 10n], [6, 20n], [7, 20n]]);
     expect(tally(base({ layer: "laws", qualified: q, matureAtClose: heavyNo, weightedAccountsAtOpen: 7, reviews: fiveYes }), laws).result).toBe("reject");
     expect(tally(base({ layer: "laws", weightedAccountsAtOpen: 40, reviews: [] }), laws).quorum).toBe(8);
-  });
-});
-
-describe("tie bit", () => {
-  it("is the LSB of the last byte of sha256 over the concatenated lowercase hex strings", () => {
-    const head = "A1".repeat(20), block = "0xB2" + "b2".repeat(31);
-    const expected = createHash("sha256").update("a1".repeat(20) + "b2".repeat(32), "ascii").digest();
-    expect(tieBit(head, block)).toBe(expected[31]! & 1);
   });
 });

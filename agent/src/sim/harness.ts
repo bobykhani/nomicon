@@ -125,6 +125,19 @@ export class Sim {
     if (opts.mature ?? true) await this.advance(31 * DAY, DAY);
   }
 
+  /** Bootstrap founders merged in the same instant, so they hold identical weight (for exact-tie scenarios). */
+  async seedFoundersTogether(accounts: Account[]): Promise<void> {
+    const prs = accounts.map((a) => this.github.open(a, { [`world/seed/${a.login}.md`]: `seed ${a.login}` }));
+    await this.tick();
+    for (const p of prs) await this.pay(p.number);
+    await this.tick(); // votes open, and close at once (Law 9)
+    await this.tick(); // closes recorded, awaiting the owner
+    for (const p of prs) this.confirm(p.number);
+    await this.tick();
+    this.endBootstrap();
+    await this.advance(31 * DAY, DAY);
+  }
+
   replayCheck(): void {
     const r = replay(this.events, new Map([[lawsHash, rawLaws]]), rawSchema, this.signer.publicKeyPem(), this.clock.now());
     this.check("replay of the full ledger reproduces every recorded outcome and every signature verifies", r.ok, r.findings.map((f) => `event ${f.event}: ${f.problem}`).join("; "));

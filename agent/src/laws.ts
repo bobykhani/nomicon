@@ -13,7 +13,7 @@ export interface Procedure {
   quorum_yes_voters: number;
   quorum_percent_of_weighted_accounts: number;
   majority: "simple_weight" | "two_thirds_weight";
-  tie: "random_parity";
+  tie: "expire";
   effect_delay_days?: number;
 }
 

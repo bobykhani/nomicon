@@ -1,7 +1,7 @@
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { createPublicClient, createWalletClient, decodeEventLog, erc20Abi, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
-import type { ChainPort, FinalizedBlock } from "../ports.js";
+import type { ChainPort } from "../ports.js";
 
 export const USDC = {
   "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -17,26 +17,6 @@ export class BaseChainAdapter implements ChainPort {
     this.wallet = anchorPrivateKey ? createWalletClient({ chain, transport: http(rpcUrl), account: privateKeyToAccount(anchorPrivateKey) }) : null;
   }
 
-  async firstFinalizedBlockAfter(ts: number): Promise<FinalizedBlock | null> {
-    const latest = await this.pub.getBlock({ blockTag: "finalized" });
-    if (Number(latest.timestamp) <= ts) return null;
-    // Binary search for the lowest block number with timestamp > ts.
-    let lo = 0n, hi = latest.number;
-    // Tighten the lower bound: Base blocks are ~2s, so start a safe distance back.
-    const guess = latest.number - BigInt(Math.ceil((Number(latest.timestamp) - ts) / 2) + 500);
-    if (guess > 0n) {
-      const g = await this.pub.getBlock({ blockNumber: guess });
-      if (Number(g.timestamp) <= ts) lo = guess;
-    }
-    while (lo < hi) {
-      const mid = (lo + hi) / 2n;
-      const b = await this.pub.getBlock({ blockNumber: mid });
-      if (Number(b.timestamp) > ts) hi = mid; else lo = mid + 1n;
-    }
-    const b = await this.pub.getBlock({ blockNumber: hi });
-    return { number: b.number, hash: b.hash, timestamp: Number(b.timestamp) };
-  }
-
   async transactionInfo(txHash: string): Promise<{ blockNumber: bigint; blockTime: number } | null> {
     try {
       const r = await this.pub.getTransactionReceipt({ hash: txHash as Hex });
@@ -46,6 +26,25 @@ export class BaseChainAdapter implements ChainPort {
     } catch {
       return null;
     }
+  }
+
+  /** The USDC transfer a settled transaction made, for recording a payment by hand (`nomicon record-payment`). */
+  async usdcTransfer(txHash: string, token: string): Promise<{ from: string; to: string; amountMicro: bigint; blockNumber: bigint; blockTime: number } | null> {
+    try {
+      const r = await this.pub.getTransactionReceipt({ hash: txHash as Hex });
+      if (r.status !== "success") return null;
+      for (const log of r.logs) {
+        if (log.address.toLowerCase() !== token.toLowerCase()) continue;
+        try {
+          const ev = decodeEventLog({ abi: erc20Abi, data: log.data, topics: log.topics });
+          if (ev.eventName !== "Transfer") continue;
+          const a = ev.args as { from: Hex; to: Hex; value: bigint };
+          const b = await this.pub.getBlock({ blockNumber: r.blockNumber });
+          return { from: a.from, to: a.to, amountMicro: a.value, blockNumber: r.blockNumber, blockTime: Number(b.timestamp) };
+        } catch { continue; }
+      }
+      return null;
+    } catch { return null; }
   }
 
   async anchor(hashHex: string): Promise<string> {

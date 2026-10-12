@@ -1,12 +1,12 @@
 # Simulation report
 
-Generated 2026-10-11 by `npm run sim`. 18 scenarios, 99 claims, 0 failed. Each scenario runs the real agent runtime against in-memory GitHub and chain adapters on a fake clock, and ends by replaying its own signed ledger.
+Generated 2026-10-12 by `npm run sim`. 22 scenarios, 116 claims, 0 failed. Each scenario runs the real agent runtime against in-memory GitHub and chain adapters on a fake clock, and ends by replaying its own signed ledger.
 
 ## honest-flow
 
 Five founders are seeded during bootstrap. After bootstrap ends and their weight matures, a newcomer passes with three yes votes and is merged.
 
-157 ledger events, 16468 ms.
+157 ledger events, 14810 ms.
 
 - pass: with nobody qualified to vote, the first founder's vote closed the moment it opened (Law 9)
 - pass: five founders hold mature weight after 31 days
@@ -19,7 +19,7 @@ Five founders are seeded during bootstrap. After bootstrap ends and their weight
 
 Three attacker accounts get merged by honest votes, then approve each other. Immature weight does not qualify; after maturity two yes votes still miss the quorum of three. A fourth attacker reaches quorum but honest voters outweigh it.
 
-300 ledger events, 42627 ms.
+300 ledger events, 40155 ms.
 
 - pass: x1 merged by honest votes
 - pass: x2 merged by honest votes
@@ -36,7 +36,7 @@ Three attacker accounts get merged by honest votes, then approve each other. Imm
 
 One account with ten merges against four accounts with one each. Its weight is capped to 20 percent of the total mature weight, so it cannot veto.
 
-334 ledger events, 71098 ms.
+334 ledger events, 63812 ms.
 
 - pass: whale's no vote counts for at most a fifth of all mature weight
 - pass: four honest yes votes beat the capped whale
@@ -47,7 +47,7 @@ One account with ten merges against four accounts with one each. Its weight is c
 
 A 200 kB file is quoted base plus size charge, and the submitter pays ten times the quote. The merge mints only the base fee as weight.
 
-118 ledger events, 9167 ms.
+118 ledger events, 7782 ms.
 
 - pass: 200 kB file is quoted base plus 192 kB of size charge
 - pass: weight minted equals the base fee only, despite the size charge and the overpayment
@@ -58,7 +58,7 @@ A 200 kB file is quoted base plus size charge, and the submitter pays ten times 
 
 A submitter collects a yes vote, then pushes a new commit. The vote is void, the submission is withdrawn, and the fee is forfeit because a vote had been cast.
 
-101 ledger events, 7489 ms.
+101 ledger events, 6153 ms.
 
 - pass: push after a vote was cast is a withdrawal with the fee forfeit
 - pass: no held fee was created
@@ -69,7 +69,7 @@ A submitter collects a yes vote, then pushes a new commit. The vote is void, the
 
 A submitter closes the pull request after paying but before anyone votes. The fee is held for resubmission.
 
-101 ledger events, 7115 ms.
+101 ledger events, 6211 ms.
 
 - pass: closing before any vote holds the fee
 - pass: replay of the full ledger reproduces every recorded outcome and every signature verifies
@@ -78,7 +78,7 @@ A submitter closes the pull request after paying but before anyone votes. The fe
 
 Ten attacker accounts open three paid submissions a day for twelve days with nobody voting. The base fee rises to its cap of ten times the floor, concurrency pricing makes the flood expensive, and the fee falls back within a week of the flood stopping.
 
-1975 ledger events, 349808 ms.
+1975 ledger events, 363990 ms.
 
 - pass: base fee reaches the cap of ten times the floor
 - pass: base fee never exceeds the cap
@@ -91,7 +91,7 @@ Ten attacker accounts open three paid submissions a day for twelve days with nob
 
 Changes that touch the Constitution, the ledger, owner files, a workflow, a case-colliding filename, a symbolic link or a non-ASCII path are rejected at intake with no fee. A README change is quoted at the Laws multiplier.
 
-105 ledger events, 5832 ms.
+105 ledger events, 6907 ms.
 
 - pass: editing CONSTITUTION.md is rejected at intake with no quote
 - pass: adding Laws.json beside laws.json is rejected at intake with no quote
@@ -108,7 +108,7 @@ Changes that touch the Constitution, the ledger, owner files, a workflow, a case
 
 Three mature attacker accounts submit a laws.json that sets the World quorum to one and the window to one hour. The Laws quorum of five defeats it. Even if such a file reached the ledger as a snapshot, the agent refuses it under Article 9A and keeps the rules in force.
 
-236 ledger events, 26012 ms.
+236 ledger events, 30110 ms.
 
 - pass: a Laws change is quoted at ten times the base
 - pass: Laws vote window is 168 hours
@@ -121,7 +121,7 @@ Three mature attacker accounts submit a laws.json that sets the World quorum to 
 
 Five founders pass a Laws change that makes the World window 96 hours. It takes effect 14 days after merging; a vote opened before then keeps 72 hours, one opened after gets 96.
 
-201 ledger events, 16844 ms.
+201 ledger events, 19409 ms.
 
 - pass: Laws change with five yes votes merges
 - pass: snapshot takes effect 14 days after the merge
@@ -133,7 +133,7 @@ Five founders pass a Laws change that makes the World window 96 hours. It takes 
 
 Content the screen flags is held with no fee. The owner rejects one hold and bars the author; a second hold times out after 14 days; a third is released by the owner and proceeds to a quote without a second screen.
 
-122 ledger events, 7189 ms.
+122 ledger events, 8011 ms.
 
 - pass: flagged content is held with no quote
 - pass: hold rejected by the owner closes the pull request
@@ -146,7 +146,7 @@ Content the screen flags is held with no fee. The owner rejects one hold and bar
 
 Nobody votes on a newcomer's submission. It expires with the fee held, the held fee covers a resubmission, and after 90 days an unused held fee is forfeit.
 
-237 ledger events, 20230 ms.
+237 ledger events, 23688 ms.
 
 - pass: no votes: expired with the fee held
 - pass: resubmission is covered by the held fee with nothing to pay
@@ -158,19 +158,20 @@ Nobody votes on a newcomer's submission. It expires with the fee held, the held 
 
 During bootstrap a passing tally waits for the owner. A rejection after a pass holds the fee, and thirty days of owner silence expires a submission with the fee held.
 
-173 ledger events, 11359 ms.
+174 ledger events, 13343 ms.
 
 - pass: a passing tally waits for the owner during bootstrap
 - pass: owner rejection after a passing vote holds the fee (Article 3)
 - pass: pull request closed and not merged
 - pass: thirty days of owner silence after close expires the submission with the fee held
+- pass: a confirmation that arrives after the expiry is stale and changes nothing
 - pass: replay of the full ledger reproduces every recorded outcome and every signature verifies
 
 ## tamper-detection
 
 After an honest flow, a copy of the ledger with one merge's weight altered fails both the signature check and the arithmetic replay.
 
-118 ledger events, 7078 ms.
+118 ledger events, 7451 ms.
 
 - pass: baseline merge
 - pass: tampered ledger is detected
@@ -180,7 +181,7 @@ After an honest flow, a copy of the ledger with one merge's weight altered fails
 
 A merged file asks a question; a later merged file answers it and cites a third. The index records the question as open then answered, and the agent mentions the asker and the cited author, never the answerer.
 
-163 ledger events, 13597 ms.
+163 ledger events, 12366 ms.
 
 - pass: the question is indexed as open after merge
 - pass: cited entry merged
@@ -194,7 +195,7 @@ A merged file asks a question; a later merged file answers it and cites a third.
 
 A merge citing thirty entries by thirty authors mentions at most ten of them.
 
-772 ledger events, 232896 ms.
+772 ledger events, 274972 ms.
 
 - pass: exactly ten mentions were sent
 - pass: replay of the full ledger reproduces every recorded outcome and every signature verifies
@@ -203,7 +204,7 @@ A merge citing thirty entries by thirty authors mentions at most ten of them.
 
 An account registers a doorbell by commenting on the doorbell issue. It receives signed deliveries for events that concern it and nothing for events that do not. A dead doorbell is retired after repeated failures and the account is told by mention.
 
-210 ledger events, 20048 ms.
+210 ledger events, 22865 ms.
 
 - pass: registration recorded as a channel event with a hash, not the URL
 - pass: the newcomer's doorbell received its quote, vote open, close and merge
@@ -221,7 +222,7 @@ An account registers a doorbell by commenting on the doorbell issue. It receives
 
 After seven days the agent posts a digest listing the week's merges and open questions, and records who watches the repository.
 
-136 ledger events, 8553 ms.
+136 ledger events, 10451 ms.
 
 - pass: at least one digest was posted after a week
 - pass: the digest lists the open question
@@ -233,3 +234,47 @@ After seven days the agent posts a digest listing the week's merges and open que
 - note: log: digest not posted: discussions are not enabled
 - note: log: digest not posted: discussions are not enabled
 - note: log: digest not posted: discussions are not enabled
+
+## tie-expires
+
+Six founders merged in the same instant hold identical weight. Three vote yes and three vote no: equal weight is no decision, so the contribution expires with the fee held and nothing outside the ledger is consulted.
+
+98 ledger events, 8845 ms.
+
+- pass: the six founders hold identical mature weight
+- pass: the tally records an exact tie and expiry
+- pass: the fee is held for resubmission, nothing merged
+- pass: replay of the full ledger reproduces every recorded outcome and every signature verifies
+
+## intake-recheck-at-close
+
+Two approved submissions add world/Foo.md and world/foo.md. Both passed intake at quote time; at close the second is checked again against the main the first changed and expires for the case collision Law 6 forbids.
+
+126 ledger events, 8109 ms.
+
+- pass: the first merged
+- pass: the second expired at close for the collision, fee held
+- pass: replay of the full ledger reproduces every recorded outcome and every signature verifies
+
+## close-order
+
+Two approved submissions add the same path and their windows close in the same tick. The platform lists the newer first; the agent settles the older first, so it merges and the newer expires as unmergeable.
+
+126 ledger events, 8106 ms.
+
+- pass: the older submission merged
+- pass: the newer one expired with its fee held
+- pass: replay of the full ledger reproduces every recorded outcome and every signature verifies
+
+## crash-recovery
+
+GitHub performs a merge but the agent dies before recording it; later a merge call fails before GitHub performed it. After each, the next tick leaves the ledger explaining the repository: one merge event, weight minted once.
+
+137 ledger events, 10096 ms.
+
+- pass: the tick that lost the merge response failed after GitHub merged
+- pass: the next tick recorded the merge GitHub had already made, exactly once, with its commit
+- pass: the tick whose merge call failed recorded no merge
+- pass: the next tick retried and merged, once
+- pass: both authors hold weight
+- pass: replay of the full ledger reproduces every recorded outcome and every signature verifies

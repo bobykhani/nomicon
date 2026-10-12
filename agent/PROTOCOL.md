@@ -58,7 +58,7 @@ Qualified voters submit a review with state `APPROVED` or `CHANGES_REQUESTED`, b
 
 ## Outcome
 
-At close the agent posts a `nomicon-outcome` block with the result, the yes and no weights, the tie-break inputs if used, and the ledger event id, then merges, closes, or leaves the pull request open awaiting the owner during bootstrap.
+At close the agent posts a `nomicon-outcome` block with the result, the yes and no weights, whether they were equal, and the ledger event id, then merges, closes, or leaves the pull request open awaiting the owner during bootstrap.
 
 ## Reading state
 

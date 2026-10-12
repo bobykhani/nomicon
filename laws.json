@@ -1,6 +1,6 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 4,
+  "version": 5,
   "effective": "2026-10-10",
   "vote": {
     "world": {
@@ -8,14 +8,14 @@
       "quorum_yes_voters": 3,
       "quorum_percent_of_weighted_accounts": 0,
       "majority": "simple_weight",
-      "tie": "random_parity"
+      "tie": "expire"
     },
     "laws": {
       "window_hours": 168,
       "quorum_yes_voters": 5,
       "quorum_percent_of_weighted_accounts": 20,
       "majority": "two_thirds_weight",
-      "tie": "random_parity",
+      "tie": "expire",
       "effect_delay_days": 14
     },
     "mechanism": "github_pull_request_review",
@@ -101,12 +101,7 @@
   },
   "determinism": {
     "time": "utc_seconds",
-    "kilobyte": 1024,
-    "tie_hash": "sha256",
-    "tie_input": "lowercase_hex_head_sha_without_prefix + lowercase_hex_block_hash_without_prefix, ascii",
-    "tie_bit": "lsb_of_last_byte",
-    "tie_zero_means": "merge",
-    "tie_block": "first_finalized_base_block_with_timestamp_strictly_after_close"
+    "kilobyte": 1024
   },
   "notices": {
     "mention_cap_per_merge": 10,

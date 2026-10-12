@@ -211,6 +211,8 @@ export const scenarios: Scenario[] = [
     const pr2 = await s.submitAndVote(M, { "world/m.md": "x" });
     await s.advance(31 * DAY, DAY);
     s.check("thirty days of owner silence after close expires the submission with the fee held", s.eventsFor(pr2.number).some((e) => e.type === "expiry") && s.state().held_fees.some((f) => f.account === M.id));
+    s.confirm(pr2.number); await s.tick();
+    s.check("a confirmation that arrives after the expiry is stale and changes nothing", !merged(s, pr2) && s.phase(pr2.number).kind === "done" && !s.eventsFor(pr2.number).some((e) => e.type === "merge"));
   }),
 
   sc("tamper-detection", "After an honest flow, a copy of the ledger with one merge's weight altered fails both the signature check and the arithmetic replay.", async (s) => {
@@ -293,5 +295,57 @@ export const scenarios: Scenario[] = [
     s.github.discussionsEnabled = false;
     await s.advance(8 * DAY, DAY);
     s.check("a failed digest post is not recorded and does not stop the agent", s.events.filter((e) => e.type === "digest").length === recorded && s.notes.some((n) => n.includes("digest not posted")) && s.github.merges.length > 0);
+  }),
+
+  sc("tie-expires", "Six founders merged in the same instant hold identical weight. Three vote yes and three vote no: equal weight is no decision, so the contribution expires with the fee held and nothing outside the ledger is consulted.", async (s) => {
+    await s.seedFoundersTogether([H1, H2, H3, H4, H5, X1]);
+    const w = [H1, H2, H3, H4, H5, X1].map((a) => s.state().weights[String(a.id)]?.mature_micro ?? -1n);
+    s.check("the six founders hold identical mature weight", w.every((x) => x === w[0]) && w[0]! > 0n, w.map(String).join(","));
+    const pr = await s.submitAndVote(N, { "world/n.md": "x" }, [yes(H1), yes(H2), yes(H3), no(H4), no(H5), no(X1)]);
+    const c = closeOf(s, pr)!;
+    s.check("the tally records an exact tie and expiry", c["tie"] === true && c["tally_result"] === "expire" && String(c["yes_micro"]) === String(c["no_micro"]), `yes ${String(c["yes_micro"])} no ${String(c["no_micro"])} ${String(c["tally_result"])} tie ${String(c["tie"])}`);
+    s.check("the fee is held for resubmission, nothing merged", !merged(s, pr) && s.state().held_fees.some((f) => f.account === N.id));
+  }),
+
+  sc("intake-recheck-at-close", "Two approved submissions add world/Foo.md and world/foo.md. Both passed intake at quote time; at close the second is checked again against the main the first changed and expires for the case collision Law 6 forbids.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const a = s.github.open(N, { "world/Foo.md": "a" }), b = s.github.open(M, { "world/foo.md": "b" });
+    await s.tick(); await s.pay(a.number); await s.pay(b.number); await s.tick();
+    s.clock.advance(H); for (const v of [H1, H2, H3]) { s.review(a.number, v, "APPROVED"); s.review(b.number, v, "APPROVED"); } await s.tick();
+    await s.advance(78 * H);
+    s.check("the first merged", merged(s, a));
+    s.check("the second expired at close for the collision, fee held", !merged(s, b) && s.eventsFor(b.number).some((e) => e.type === "expiry" && String(e["reason"]).includes("intake")) && s.state().held_fees.some((f) => f.account === M.id), s.eventsFor(b.number).map((e) => e.type).join(","));
+  }),
+
+  sc("close-order", "Two approved submissions add the same path and their windows close in the same tick. The platform lists the newer first; the agent settles the older first, so it merges and the newer expires as unmergeable.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const a = s.github.open(N, { "world/same.md": "from N" }), b = s.github.open(M, { "world/same.md": "from M" });
+    await s.tick(); await s.pay(a.number); await s.pay(b.number); await s.tick();
+    s.clock.advance(H); for (const v of [H1, H2, H3]) { s.review(a.number, v, "APPROVED"); s.review(b.number, v, "APPROVED"); } await s.tick();
+    await s.advance(78 * H);
+    s.check("the older submission merged", merged(s, a));
+    s.check("the newer one expired with its fee held", !merged(s, b) && s.eventsFor(b.number).some((e) => e.type === "expiry") && s.state().held_fees.some((f) => f.account === M.id), s.eventsFor(b.number).map((e) => e.type).join(","));
+  }),
+
+  sc("crash-recovery", "GitHub performs a merge but the agent dies before recording it; later a merge call fails before GitHub performed it. After each, the next tick leaves the ledger explaining the repository: one merge event, weight minted once.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    s.github.failNextMerge = "after";
+    const a = await s.submit(N, { "world/a.md": "a" }); await s.pay(a.number); await s.tick();
+    s.clock.advance(H); for (const v of [H1, H2, H3]) s.review(a.number, v, "APPROVED"); await s.tick();
+    let threw = false;
+    try { await s.advance(78 * H); } catch { threw = true; }
+    s.check("the tick that lost the merge response failed after GitHub merged", threw && s.github.pulls.get(a.number)!.merged && !s.eventsFor(a.number).some((e) => e.type === "merge"));
+    await s.tick();
+    const m = s.eventsFor(a.number).filter((e) => e.type === "merge");
+    s.check("the next tick recorded the merge GitHub had already made, exactly once, with its commit", m.length === 1 && String(m[0]!["merge_commit"]) === s.github.pulls.get(a.number)!.mergeCommit);
+    s.github.failNextMerge = "before";
+    const b = await s.submit(M, { "world/b.md": "b" }); await s.pay(b.number); await s.tick();
+    s.clock.advance(H); for (const v of [H1, H2, H3]) s.review(b.number, v, "APPROVED"); await s.tick();
+    threw = false;
+    try { await s.advance(78 * H); } catch { threw = true; }
+    s.check("the tick whose merge call failed recorded no merge", threw && !merged(s, b) && !s.eventsFor(b.number).some((e) => e.type === "merge"));
+    await s.tick();
+    s.check("the next tick retried and merged, once", merged(s, b) && s.eventsFor(b.number).filter((e) => e.type === "merge").length === 1);
+    s.check("both authors hold weight", s.state().weights[String(N.id)] !== undefined && s.state().weights[String(M.id)] !== undefined);
   }),
 ];

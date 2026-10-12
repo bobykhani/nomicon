@@ -17,7 +17,7 @@ One JSON object per line, append-only, in order. Every object has `id` (sequenti
 | `payment` | payment verified | `pr`, `tx`, `block`, `block_time`, `amount_micro`, `from`, `cad_value` |
 | `vote_open` | window opened | `pr`, `head`, `opened`, `closes`, `laws_hash`, `qualified` (list of account ids) |
 | `review` | a counted or superseded review | `pr`, `account`, `login`, `review_id`, `state`, `submitted` |
-| `vote_close` | tally | `pr`, `yes_voters`, `yes_micro`, `no_micro`, `tie_block`, `tie_bit`, `result` (`merge`, `reject`, `expire`, `await_owner`) |
+| `vote_close` | tally | `pr`, `yes_voters`, `yes_micro`, `no_micro`, `tie` (equal weight, no decision), `tally_result`, `result` (`merge`, `reject`, `expire`, `await_owner`) |
 | `merge` | merged | `pr`, `head`, `merge_commit`, `weight_micro`, `account`, `paths`, `headers` (per path: question, answers, cites) |
 | `withdrawal` | author pushed, closed or drafted after open | `pr`, `fee_disposition` |
 | `expiry` | expired | `pr`, `held_until` |

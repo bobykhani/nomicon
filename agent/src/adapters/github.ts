@@ -115,8 +115,13 @@ export class GitHubAdapter implements GitHubPort {
       return data.merged ? data.sha : null;
     } catch (e) {
       const status = (e as { status?: number }).status;
-      if (status === 405 || status === 409) return null;
-      throw e;
+      if (status !== 405 && status !== 409) throw e;
+      // Already merged (a crash after GitHub merged, or a retry): its merge commit, if it is the head that was voted on.
+      try {
+        const { data: p } = await this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: n });
+        if (p.merged && p.head.sha === headSha && p.merge_commit_sha) return p.merge_commit_sha;
+      } catch { /* fall through: not mergeable */ }
+      return null;
     }
   }
 

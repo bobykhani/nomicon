@@ -1,7 +1,6 @@
 /**
  * Law 2, Law 3 and Law 11: counting a vote.
  */
-import { createHash } from "node:crypto";
 import type { Laws, Procedure } from "./laws.js";
 import { cappedWeight } from "./weight.js";
 import type { Layer } from "./constitution.js";
@@ -27,10 +26,6 @@ export interface TallyInput {
   matureAtClose: Map<number, bigint>;
   /** Count of accounts holding mature weight at open (Law 3 percent quorum). */
   weightedAccountsAtOpen: number;
-  /** Lowercase hex, no prefix. */
-  headSha: string;
-  /** Lowercase hex, no prefix. Required only on a tie. */
-  tieBlockHash?: string;
 }
 
 export interface CountedVote { account: number; login: string; reviewId: number; yes: boolean; weightMicro: bigint }
@@ -42,8 +37,8 @@ export interface TallyResult {
   quorum: number;
   yesMicro: bigint;
   noMicro: bigint;
+  /** Law 2: yes weight equalled no weight, so there was no decision. */
   tie: boolean;
-  tieBit?: 0 | 1;
   procedure: Procedure;
 }
 
@@ -66,12 +61,6 @@ export function quorumFor(layer: Layer, weightedAccounts: number, laws: Laws): {
   return { quorum: Math.max(procedure.quorum_yes_voters, pct), procedure };
 }
 
-/** Law 11 tie-break: LSB of last byte of SHA-256(headSha || blockHash), ASCII hex without prefixes. 0 merges. */
-export function tieBit(headSha: string, blockHash: string): 0 | 1 {
-  const h = createHash("sha256").update(headSha.toLowerCase().replace(/^0x/, "") + blockHash.toLowerCase().replace(/^0x/, ""), "ascii").digest();
-  return (h[h.length - 1]! & 1) as 0 | 1;
-}
-
 export function tally(input: TallyInput, laws: Laws): TallyResult {
   const { quorum, procedure } = quorumFor(input.layer, input.weightedAccountsAtOpen, laws);
   const counted = countedReviews(input);
@@ -89,13 +78,8 @@ export function tally(input: TallyInput, laws: Laws): TallyResult {
   votes.sort((a, b) => a.account - b.account);
   const base = { votes, yesVoters, quorum, yesMicro, noMicro, procedure };
   if (yesVoters < quorum) return { ...base, result: "expire", tie: false };
-  let passes: boolean;
-  if (procedure.majority === "two_thirds_weight") passes = yesMicro * 3n >= (yesMicro + noMicro) * 2n && yesMicro > noMicro;
-  else passes = yesMicro > noMicro;
-  if (yesMicro === noMicro || (procedure.majority === "two_thirds_weight" && yesMicro * 3n === (yesMicro + noMicro) * 2n)) {
-    if (!input.tieBlockHash) throw new Error("tie requires tieBlockHash");
-    const bit = tieBit(input.headSha, input.tieBlockHash);
-    return { ...base, result: bit === 0 ? "merge" : "reject", tie: true, tieBit: bit };
-  }
+  // Law 2 step 5: equal weight is no decision. Law 3: at least two thirds of the counted weight passes.
+  if (procedure.majority === "simple_weight" && yesMicro === noMicro) return { ...base, result: "expire", tie: true };
+  const passes = yesMicro > noMicro && (procedure.majority !== "two_thirds_weight" || yesMicro * 3n >= (yesMicro + noMicro) * 2n);
   return { ...base, result: passes ? "merge" : "reject", tie: false };
 }

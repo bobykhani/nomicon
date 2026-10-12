@@ -38,7 +38,7 @@ import { Runtime } from "./runtime.js";
 import { FileDoorbellStore, GitHubAdapter, HttpDoorbell } from "./adapters/github.js";
 import { octokitFor, parseGitHubAuthEnv, type GitHubIdentity } from "./adapters/auth.js";
 import { Notifier } from "./notifier.js";
-import { BaseChainAdapter } from "./adapters/chain.js";
+import { BaseChainAdapter, USDC } from "./adapters/chain.js";
 import { ClaudeScreen } from "./screen.js";
 import { createPayServer } from "./pay.js";
 import { loadLaws } from "./laws.js";
@@ -135,25 +135,29 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case "run": return run();
+    case "record-payment": return recordPayment(Number(args[0]), args[1] ?? "");
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|maintenance|end-bootstrap|deploy|patch|amend-laws>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment>");
       process.exitCode = 1;
   }
 }
 
-async function run(): Promise<void> {
-  const network = env("NOMICON_NETWORK", "eip155:84532") as "eip155:8453" | "eip155:84532";
+type Network = "eip155:8453" | "eip155:84532";
+
+/** Everything the runtime needs, built from the environment; shared by `run` and the owner commands that act through the runtime. */
+async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseChainAdapter; network: Network; log: (m: string) => void; publicBaseUrl: string; trustProxy: boolean }> {
+  const network = env("NOMICON_NETWORK", "eip155:84532") as Network;
   const { github, identity } = await githubFromEnv();
   const led = ledger();
   const genesis = led.events.find((e) => e.type === "genesis");
   const agentAccount = genesis ? Number(genesis["agent_account"]) : null;
   if (agentAccount !== null && agentAccount !== identity.id) throw new Error(`GitHub identity ${identity.login} (${identity.id}) is not the agent account ${agentAccount} named at genesis; quotes would come from the wrong account`);
-  console.log(new Date().toISOString(), `github identity: ${identity.login} (${identity.id})`);
+  const log = (m: string) => console.log(new Date().toISOString(), m);
+  log(`github identity: ${identity.login} (${identity.id})`);
   const anchorKey = process.env["ANCHOR_PRIVATE_KEY"] as `0x${string}` | undefined;
   const chain = new BaseChainAdapter(network, env("BASE_RPC_URL"), anchorKey);
   const oracle: PriceOracle = { usdcToCad: async () => env("NOMICON_USDC_CAD", "1.37") };
   const publicBaseUrl = env("NOMICON_PUBLIC_URL");
-  const log = (m: string) => console.log(new Date().toISOString(), m);
   const doorbellIssue = process.env["NOMICON_DOORBELL_ISSUE"] ? Number(process.env["NOMICON_DOORBELL_ISSUE"]) : null;
   const dataDir = env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private"));
   const allowPrivate = process.env["NOMICON_DOORBELL_ALLOW_PRIVATE"] === "1";
@@ -166,6 +170,11 @@ async function run(): Promise<void> {
     termsCommit: async () => env("NOMICON_TERMS_COMMIT", "main"),
     log,
   });
+  return { rt, led, chain, network, log, publicBaseUrl, trustProxy };
+}
+
+async function run(): Promise<void> {
+  const { rt, network, publicBaseUrl, trustProxy } = await buildRuntime();
   const { server } = await createPayServer({
     network, facilitatorUrl: env("X402_FACILITATOR_URL", "https://x402.org/facilitator"),
     quoteFor: (pr) => rt.quoteFor(pr), onPaid: (n) => rt.onPaid(n), now, publicBaseUrl,
@@ -178,6 +187,19 @@ async function run(): Promise<void> {
     try { await rt.tick(); } catch (e) { console.error(new Date().toISOString(), "tick failed:", (e as Error).message); }
     await new Promise((r) => setTimeout(r, interval));
   }
+}
+
+/** A payment the facilitator settled but the agent failed to record: verify the transfer on chain, then record it through the same path as a live payment. */
+async function recordPayment(pr: number, tx: string): Promise<void> {
+  if (!pr || !tx) throw new Error("usage: nomicon record-payment <pr> <transaction hash>");
+  const { rt, led, chain, network } = await buildRuntime();
+  if (led.events.some((e) => e.type === "payment" && String(e["tx"]).toLowerCase() === tx.toLowerCase())) throw new Error("that transaction is already recorded");
+  const t = await chain.usdcTransfer(tx, USDC[network]);
+  if (!t) throw new Error("no successful USDC transfer found in that transaction");
+  const dest = replayFromFiles(root(), now()).state.fee.destination;
+  if (!dest || t.to.toLowerCase() !== dest.toLowerCase()) throw new Error(`the transfer went to ${t.to}, not the destination in force ${dest}`);
+  await rt.onPaid({ pr, tx, payer: t.from, amountMicro: t.amountMicro, network });
+  console.log(`payment recorded for pr ${pr}: ${t.amountMicro} micro-USDC from ${t.from} in block ${t.blockNumber}`);
 }
 
 main(process.argv.slice(2)).catch((e) => { console.error(e.message); process.exit(1); });

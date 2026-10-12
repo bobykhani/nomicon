@@ -2,7 +2,7 @@
  * In-memory adapters for tests and for the Phase 3 simulation. They model
  * just enough of GitHub and the chain for the rules to be exercised.
  */
-import type { ChainPort, Clock, DoorbellPort, DoorbellRecord, DoorbellStore, FinalizedBlock, GitHubPort, IssueComment, PriceOracle, PullCommit, PullInfo, ScreenDecision, ScreenInput, ScreenPort } from "../ports.js";
+import type { ChainPort, Clock, DoorbellPort, DoorbellRecord, DoorbellStore, GitHubPort, IssueComment, PriceOracle, PullCommit, PullInfo, ScreenDecision, ScreenInput, ScreenPort } from "../ports.js";
 import type { ChangedFile } from "../paths.js";
 import type { Review } from "../tally.js";
 import { createHash } from "node:crypto";
@@ -39,7 +39,7 @@ export class FakeGitHub implements GitHubPort {
   open(author: { id: number; login: string }, files: Record<string, string>, over: Partial<FakePull> = {}): FakePull {
     const n = ++this.seq;
     const head = createHash("sha1").update(`pr${n}:${JSON.stringify(files)}:${this.clock.now()}`).digest("hex");
-    const changed: ChangedFile[] = Object.entries(files).map(([path, content]) => ({ path, status: "added", mode: "100644", bytesChanged: Buffer.byteLength(content), sizeAfter: Buffer.byteLength(content) }));
+    const changed: ChangedFile[] = Object.entries(files).map(([path, content]) => ({ path, status: this.repoFiles[path] !== undefined ? "modified" : "added", mode: "100644", bytesChanged: Buffer.byteLength(content), sizeAfter: Buffer.byteLength(content) }));
     const pull: FakePull = {
       number: n, title: `pr ${n}`, body: "", headSha: head, baseSha: "base", author, state: "open", draft: false, merged: false, createdAt: this.clock.now(),
       files: changed, contents: files, commits: [{ sha: head, signedOff: true, authorId: author.id }], reviews: [], comments: [], ...over,
@@ -53,7 +53,8 @@ export class FakeGitHub implements GitHubPort {
   }
   push(pr: number): void { const p = this.pulls.get(pr)!; p.headSha = createHash("sha1").update(p.headSha + "push").digest("hex"); }
 
-  async listOpenPulls(): Promise<PullInfo[]> { return [...this.pulls.values()].filter((p) => p.state === "open"); }
+  /** Newest first, as GitHub lists them. */
+  async listOpenPulls(): Promise<PullInfo[]> { return [...this.pulls.values()].filter((p) => p.state === "open").reverse(); }
   async getPull(n: number): Promise<PullInfo> { return this.pulls.get(n)!; }
   async listFiles(n: number): Promise<ChangedFile[]> { return this.pulls.get(n)!.files; }
   async listCommits(n: number): Promise<PullCommit[]> { return this.pulls.get(n)!.commits; }
@@ -72,12 +73,18 @@ export class FakeGitHub implements GitHubPort {
     const list = (this.issueComments[n] ??= []);
     list.push({ id: n * 10000 + list.length + 1, account: 0, login: "nomicon-agent", body, createdAt: this.clock.now() });
   }
+  /** Set to "before" or "after" to make the next merge call throw, before or after the merge was performed. */
+  failNextMerge: "before" | "after" | null = null;
   async merge(n: number, headSha: string): Promise<string | null> {
     const p = this.pulls.get(n)!;
+    if (p.merged) return p.headSha === headSha ? (p.mergeCommit ?? null) : null;
     if (p.headSha !== headSha || p.state !== "open") return null;
+    for (const f of p.files) if (f.status === "added" && this.repoFiles[f.path] !== undefined) return null; // both added the path: a git conflict
+    if (this.failNextMerge === "before") { this.failNextMerge = null; throw new Error("simulated network failure before the merge"); }
     p.state = "closed"; p.merged = true; this.merges.push({ pr: n, head: headSha });
     for (const [path, content] of Object.entries(p.contents)) this.repoFiles[path] = content;
     p.mergeCommit = createHash("sha1").update("merge" + headSha).digest("hex");
+    if (this.failNextMerge === "after") { this.failNextMerge = null; throw new Error("simulated response loss after the merge"); }
     return p.mergeCommit;
   }
   async close(n: number): Promise<void> { this.pulls.get(n)!.state = "closed"; }
@@ -112,12 +119,7 @@ export class FakeDoorbell implements DoorbellPort {
 
 export class FakeChain implements ChainPort {
   anchors: string[] = [];
-  constructor(private clock: Clock, private finalityLag = 60) {}
-  async firstFinalizedBlockAfter(ts: number): Promise<FinalizedBlock | null> {
-    if (this.clock.now() - ts < this.finalityLag) return null;
-    const number = BigInt(Math.floor((ts + 2) / 2));
-    return { number, hash: createHash("sha256").update("block" + number.toString()).digest("hex"), timestamp: ts + 2 };
-  }
+  constructor(private clock: Clock) {}
   async transactionInfo(txHash: string): Promise<{ blockNumber: bigint; blockTime: number } | null> {
     return { blockNumber: BigInt(parseInt(txHash.slice(2, 10), 16) || 1), blockTime: this.clock.now() };
   }

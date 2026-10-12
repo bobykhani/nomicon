@@ -79,8 +79,6 @@ export function replay(events: LedgerEvent[], lawsByHash: Map<string, string>, r
         reviews: reviews.get(pr) ?? [],
         matureAtClose,
         weightedAccountsAtOpen: Number(open["weighted_accounts"]),
-        headSha: String(open["head"]),
-        ...(typeof e["tie_block"] === "string" ? { tieBlockHash: e["tie_block"] as string } : {}),
       }, laws);
       const recorded = String(e["result"]);
       const expected = e["bootstrap"] === true ? "await_owner" : t.result;

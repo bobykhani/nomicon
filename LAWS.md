@@ -2,7 +2,7 @@
 
 Laws are the rules the community can change. Every number here is also in `laws.json`, which is what the enforcement agent reads. If the two disagree, `laws.json` is wrong, and the owner may correct it under Constitution Article 8.
 
-Version 4, 11 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
+Version 5, 11 October 2026. These are starting values. Change them by the Laws procedure in Law 3, within the minimums in Constitution Article 9A.
 
 ---
 
@@ -20,8 +20,8 @@ A **qualified voter** on a contribution is a non-author account whose mature wei
 2. A qualified voter votes by submitting a review on the pull request: *Approve* is yes, *Request changes* is no. A vote is the latest review in one of those two states by a qualified voter, submitted after the open event and no later than the close timestamp by the platform's own clock. Reviews that only comment are ignored and do not replace an earlier vote. Dismissal of a review is ignored.
 3. When the window closes, the agent counts distinct qualified voters who voted yes. Fewer than **3** means the contribution **expires**.
 4. Otherwise the agent sums the mature weight, as of the close and capped under Law 4, of yes votes and of no votes. More yes weight merges. More no weight rejects.
-5. Equal weight is decided by the random bit in Law 11. Zero merges, one rejects.
-6. A merge is made from the head commit recorded at open. If it cannot be merged into `main` without conflict at close, the contribution expires.
+5. Equal yes and no weight is no decision: the contribution **expires** and the fee is held as Law 5 provides.
+6. A merge is made from the head commit recorded at open. At close the agent checks the contribution again against the `main` of that moment under Law 6 and Law 8, since `main` may have changed since the quote; if it no longer passes, or cannot be merged without conflict, the contribution expires. Votes that close in the same moment are settled in the order they closed, then by pull request number.
 
 ## Law 3. Laws procedure
 
@@ -87,7 +87,7 @@ Merges result only from votes, the arithmetic in these Laws, and, during bootstr
 
 All times are UTC seconds by the ledger's clock, except review times, which are the platform's own timestamps. Kilobytes are 1024 bytes. Weight arithmetic is in micro-USDC integers, rounded half to even.
 
-The tie-break bit is the least significant bit of the last byte of SHA-256 over the ASCII text formed by the lowercase hexadecimal head commit hash, without prefix, followed immediately by the lowercase hexadecimal hash, without prefix, of the first finalized block on the fee network whose timestamp is strictly greater than the close timestamp. Test vectors live in `agent/`.
+Nothing in a tally depends on anything outside the ledger: replay of every vote needs only `ledger/events.jsonl` and the Laws in force at its open.
 
 ## Law 12. Questions and notices
 

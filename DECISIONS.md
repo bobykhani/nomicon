@@ -142,3 +142,15 @@ The only way to prove an account owns a doorbell without handling tokens is a co
 
 A contribution can cite hundreds of entries for the cost of typing their paths. Without a cap the agent would email hundreds of members on the author's behalf, and members would mute the repository. Ten keeps a mention meaningful.
 
+## D36. Equal weight is no decision
+
+The first draft broke an exact tie with a random bit taken from a block hash on the fee network. That made the close path depend on chain finality for an event that will almost never happen, since weights are micro-USDC integers decaying every second. Rejection would forfeit the fee for an outcome that is nobody's fault. Expiry is what the Laws already do for the other no-decision case, a vote short of quorum: the fee is held and the work can come back. A Laws vote at exactly two thirds passes, as Law 3 says "at least"; an equal split under the Laws procedure simply fails two thirds and is a rejection, not a tie. No tie had occurred before the change.
+
+## D37. The rules are checked again at close
+
+Intake runs when a contribution is quoted, against the `main` of that moment. By the time a vote closes, days later, other contributions have merged. Two approved files whose paths differ only in case would both pass intake and both merge, leaving a collision Law 6 forbids. The agent therefore re-runs the path rules against the current `main` just before merging, and expires with the fee held if they fail. Votes closing in the same tick are settled oldest first, so the earlier submission wins a conflict rather than whichever the platform happened to list first.
+
+## D38. The ledger must always explain the repository
+
+The agent asks GitHub to merge and then writes the merge event. If it dies between the two, the repository has a merge the ledger does not know about, and no weight is ever minted. So a merge request is idempotent (an already merged head returns its merge commit), a tally that said merge without a merge event is retried each tick while the pull request is open, and a pull request that left the open list in that state is reconciled against what GitHub did. An owner confirmation that arrives after an expiry or withdrawal is ignored. A payment the facilitator settled but the agent failed to record is retried, logged loudly with the transaction, and can be recorded by hand with `nomicon record-payment`, which verifies the transfer on chain first.
+

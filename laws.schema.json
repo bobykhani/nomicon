@@ -133,15 +133,10 @@
     },
     "determinism": {
       "type": "object",
-      "required": ["time", "kilobyte", "tie_hash", "tie_input", "tie_bit", "tie_zero_means", "tie_block"],
+      "required": ["time", "kilobyte"],
       "properties": {
         "time": { "const": "utc_seconds" },
-        "kilobyte": { "const": 1024 },
-        "tie_hash": { "const": "sha256" },
-        "tie_input": { "type": "string" },
-        "tie_bit": { "const": "lsb_of_last_byte" },
-        "tie_zero_means": { "const": "merge" },
-        "tie_block": { "type": "string" }
+        "kilobyte": { "const": 1024 }
       }
     }
   },
@@ -154,7 +149,7 @@
         "quorum_yes_voters": { "type": "integer", "minimum": 3 },
         "quorum_percent_of_weighted_accounts": { "type": "number", "minimum": 0, "maximum": 100 },
         "majority": { "enum": ["simple_weight", "two_thirds_weight"] },
-        "tie": { "const": "random_parity" }
+        "tie": { "const": "expire" }
       }
     }
   }

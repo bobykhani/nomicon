@@ -119,7 +119,18 @@ export async function createPayServer(opts: PayServerOptions): Promise<{ server:
         res.end(JSON.stringify(settled.response.body ?? { error: settled.errorReason }));
         return;
       }
-      await opts.onPaid({ pr, tx: settled.transaction, payer: settled.payer ?? "", amountMicro: BigInt(result.paymentRequirements.amount), network: settled.network });
+      // The money has moved. Recording must not be lost to a transient failure, so retry, then say exactly what to do.
+      let recorded = false, lastErr: unknown = null;
+      for (let attempt = 0; attempt < 5 && !recorded; attempt++) {
+        try {
+          await opts.onPaid({ pr, tx: settled.transaction, payer: settled.payer ?? "", amountMicro: BigInt(result.paymentRequirements.amount), network: settled.network });
+          recorded = true;
+        } catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 500 * (attempt + 1))); }
+      }
+      if (!recorded) {
+        console.error(`PAYMENT SETTLED BUT NOT RECORDED: pr ${pr} tx ${settled.transaction}: ${(lastErr as Error).message}. Record it with: nomicon record-payment ${pr} ${settled.transaction}`);
+        return json(500, { error: "payment settled but not yet recorded; keep this transaction hash, the operator records it", pr, transaction: settled.transaction, network: settled.network });
+      }
       json(200, { pr, transaction: settled.transaction, network: settled.network }, settled.headers);
     } catch (e) {
       json(500, { error: (e as Error).message });

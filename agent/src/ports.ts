@@ -60,11 +60,7 @@ export interface DoorbellStore {
   save(data: { doorbells: Record<string, DoorbellRecord>; lastDelivered: number }): void;
 }
 
-export interface FinalizedBlock { number: bigint; hash: string; timestamp: number }
-
 export interface ChainPort {
-  /** First finalized block whose timestamp is strictly greater than `ts`. Null if not yet available. */
-  firstFinalizedBlockAfter(ts: number): Promise<FinalizedBlock | null>;
   /** Timestamp and block of a settled transaction. Null if not found. */
   transactionInfo(txHash: string): Promise<{ blockNumber: bigint; blockTime: number } | null>;
   /** Anchor a hash on the chain. Returns the transaction hash. */

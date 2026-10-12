@@ -132,11 +132,15 @@ export class Runtime {
     await this.maybeAdjustFee(laws, now);
     await this.maybeEndBootstrap(now);
     const pulls = await this.d.github.listOpenPulls();
+    // Closes are processed in the order their windows closed, then by number, so an earlier submission wins a conflict.
+    const closes = new Map(this.state(now).open_votes.map((v) => [v.pr, v.closes] as [number, number]));
+    pulls.sort((a, b) => ((closes.get(a.number) ?? Infinity) - (closes.get(b.number) ?? Infinity)) || a.number - b.number);
     const openNumbers = new Set(pulls.map((p) => p.number));
     for (const pr of pulls) await this.handlePull(pr, laws, now);
     await this.applyOwnerDecisions(laws, now, openNumbers);
     // A pull request closed or drafted while its vote was open is a withdrawal (Law 8).
     for (const v of this.state(now).open_votes) if (!openNumbers.has(v.pr)) await this.withdraw(v.pr, laws, now, "closed after the vote opened");
+    await this.reconcileClosed(openNumbers, laws, now);
     if (this.d.notifier) {
       await this.d.notifier.pollRegistrations(now);
       await this.d.notifier.pollWatchers(now, laws, this.state(now));
@@ -170,6 +174,7 @@ export class Runtime {
         if (now - p.close.at >= laws.bootstrap.owner_action_deadline_days * 86400) await this.expire(pr.number, p.quote, laws, now, "the owner did not act within the bootstrap deadline");
         return;
       case "confirmed": return this.doMerge(pr.number, String(p.open["head"]), p.quote, laws, now, pr.author);
+      case "merging": return this.doMerge(pr.number, String(p.open["head"]), p.quote, laws, now, pr.author);
       default: return;
     }
   }
@@ -260,31 +265,37 @@ export class Runtime {
     for (const [id, w] of Object.entries(atClose.weights)) matureAtClose.set(Number(id), w.mature_micro);
     const base = {
       layer: open["layer"] as "world" | "laws", openedAt: Number(open["opened"]), closesAt, qualified, authors, reviews,
-      matureAtClose, weightedAccountsAtOpen: Number(open["weighted_accounts"]), headSha: String(open["head"]),
+      matureAtClose, weightedAccountsAtOpen: Number(open["weighted_accounts"]),
     };
-    // Law 11: the tie-break block is needed only on an exact tie; fetch it lazily so ordinary closes do not wait for finality.
-    let block: { hash: string } | null = null;
-    let result;
-    try { result = tally(base, lawsAtOpen); }
-    catch (e) {
-      if (!(e instanceof Error) || !e.message.includes("tie")) throw e;
-      block = await this.d.chain.firstFinalizedBlockAfter(closesAt);
-      if (!block) return; // wait for finality
-      result = tally({ ...base, tieBlockHash: block.hash }, lawsAtOpen);
-    }
+    const result = tally(base, lawsAtOpen);
     // Article 3: during bootstrap every closed vote waits for the owner, whatever the tally says.
     const bootstrap = state.bootstrap.active;
     const recorded = bootstrap ? "await_owner" : result.result;
     this.d.ledger.append(now, "vote_close", {
       pr: pr.number, yes_voters: result.yesVoters, quorum: result.quorum, yes_micro: result.yesMicro, no_micro: result.noMicro,
-      tie_block: result.tie && block ? block.hash : null, tie_bit: result.tie ? result.tieBit : null, tally_result: result.result, result: recorded, bootstrap,
+      tie: result.tie, tally_result: result.result, result: recorded, bootstrap,
       votes: result.votes.map((v) => ({ account: v.account, yes: v.yes, weight_micro: v.weightMicro })),
     });
-    const summary = `Tally: ${result.result}. Yes voters ${result.yesVoters} of quorum ${result.quorum}. Yes weight ${micro(result.yesMicro)}, no weight ${micro(result.noMicro)}${result.tie && block ? `, tie broken by block ${block.hash} bit ${result.tieBit}` : ""}.`;
+    const summary = `Tally: ${result.result}. Yes voters ${result.yesVoters} of quorum ${result.quorum}. Yes weight ${micro(result.yesMicro)}, no weight ${micro(result.noMicro)}${result.tie ? ". Equal weight is no decision (Law 2)" : ""}.`;
     if (recorded === "await_owner") { await this.d.github.comment(pr.number, summary + " Bootstrap is active: this merges only when the owner confirms, and the owner may reject."); return; }
     if (recorded === "merge") { await this.doMerge(pr.number, String(open["head"]), quote, laws, now, pr.author, summary); return; }
     if (recorded === "reject") { await this.d.github.comment(pr.number, summary + " The fee is forfeit (Law 5)."); await this.d.github.close(pr.number); return; }
-    await this.expire(pr.number, quote, laws, now, summary + " Quorum was not reached.");
+    await this.expire(pr.number, quote, laws, now, summary + (result.tie ? "" : " Quorum was not reached."));
+  }
+
+  /** Pull requests that left the open list while the ledger still expects a merge: a crash between GitHub's merge and the ledger write, or a close by the author in that moment. */
+  private async reconcileClosed(openNumbers: Set<number>, laws: Laws, now: number): Promise<void> {
+    const candidates = new Set<number>();
+    for (const e of this.events) if (e.type === "vote_close" || e.type === "owner_confirm") candidates.add(Number(e["pr"]));
+    for (const pr of candidates) {
+      if (openNumbers.has(pr)) continue;
+      const p = phaseOf(pr, this.events);
+      if (p.kind !== "merging" && p.kind !== "confirmed") continue;
+      let info: PullInfo;
+      try { info = await this.d.github.getPull(pr); } catch (e) { this.log(`pr ${pr}: cannot read the closed pull request: ${(e as Error).message}`); continue; }
+      if (info.merged) await this.doMerge(pr, String(p.open["head"]), p.quote, laws, now, info.author);
+      else await this.withdraw(pr, laws, now, "closed before it could be merged", p.quote);
+    }
   }
 
   /** Record every counting review in the ledger so replay needs nothing from the platform (Article 11). */
@@ -300,6 +311,18 @@ export class Runtime {
   }
 
   private async doMerge(pr: number, head: string, quote: LedgerEvent, laws: Laws, now: number, author: { id: number; login: string }, note = ""): Promise<void> {
+    // Law 8 at close: main may have moved since the quote, so the path rules run again against it,
+    // unless GitHub already performed this merge (a crash before the record, see reconcileClosed).
+    let alreadyMerged = false;
+    try { alreadyMerged = (await this.d.github.getPull(pr)).merged; } catch { /* treat as not merged */ }
+    if (!alreadyMerged) {
+      let again;
+      try {
+        const [files, commits, existing] = await Promise.all([this.d.github.listFiles(pr), this.d.github.listCommits(pr), this.d.github.listPaths("main")]);
+        again = intake({ files, existingPaths: existing, commits }, laws);
+      } catch (e) { this.log(`pr ${pr}: could not re-check intake at close, retrying next tick: ${(e as Error).message}`); return; }
+      if (!again.ok) { await this.expire(pr, quote, laws, now, `no longer passes intake against the current main: ${again.reasons.join("; ")}.`); return; }
+    }
     const mergeCommit = await this.d.github.merge(pr, head);
     if (!mergeCommit) { await this.expire(pr, quote, laws, now, "could not be merged cleanly at close"); return; }
     // Law 12: record what was merged and any headers, so questions and citations replay from the ledger alone.
