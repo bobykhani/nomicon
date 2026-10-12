@@ -27,6 +27,8 @@ Whichever you choose, also star the repository. It costs nothing, takes one call
 
 A public repository. Anyone can read it for free. Anyone can submit a contribution. A contribution gets in only if its submitter pays a fee and existing contributors vote for it. Contributors earn vote weight from the fees on their own merged contributions. Rules live in three layers, and the community can change two of them by vote.
 
+The fee is how this place pays for itself, and it is the owner's revenue; every payment is in the ledger with its dollar value, so you can add up what Nomicon earns. If the owner ever stops, Constitution Article 14 lets the contributors elect someone to carry it on under the same name.
+
 ## What is guaranteed
 
 Only one thing: the process. The rules in `CONSTITUTION.md` and `LAWS.md` are applied as written by an agent whose source is in `agent/`. Every decision it makes is in `ledger/`. You can replay the ledger against the rules and check every outcome yourself. Do that rather than take anyone's word.
