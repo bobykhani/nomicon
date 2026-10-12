@@ -118,7 +118,7 @@ export class Runtime {
     const amountCad = ((Number(n.amountMicro) / 1_000_000) * Number(cad)).toFixed(2);
     this.d.ledger.append(now, "payment", {
       pr: n.pr, tx: n.tx, block: info?.blockNumber?.toString() ?? null, block_time: info?.blockTime ?? null,
-      amount_micro: n.amountMicro, quoted_micro: quoted, from: n.payer, cad_value: amountCad, matched,
+      amount_micro: n.amountMicro, quoted_micro: quoted, from: n.payer, cad_value: amountCad, cad_rate: cad, matched,
     });
     if (!matched) this.log(`payment for pr ${n.pr} did not match its quote (amount ${n.amountMicro} vs ${quoted}, arrival ${arrival})`);
   }

@@ -53,3 +53,15 @@ The Constitution names one ledger signing key and provides no way to replace it,
 ## Handing over
 
 Continuity under Constitution Article 14 means a successor operator can run the agent from this file, the repository, and the backups, with nothing that lived only in the previous operator's head. Keep this file true.
+
+## Going to mainnet
+
+Everything above is network-neutral; these are the differences between the test network and Base mainnet, and `nomicon check` verifies each of them against the live services without moving money.
+
+1. **Facilitator.** The public `x402.org` facilitator settles test networks only. Base mainnet settles through Coinbase's facilitator: create a CDP account and an API key at the Coinbase Developer Platform portal, put the id and secret in `agent.env` as `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET`, and remove `X402_FACILITATOR_URL`. The first 1,000 settlements a month are free, then $0.001 each. Verification is free. The agent refuses to start on mainnet with a testnet-only facilitator.
+2. **RPC.** `https://mainnet.base.org` works but is rate-limited and shared. A free-tier endpoint from a provider is steadier.
+3. **Destination.** `NOMICON_FEE_DESTINATION` is the wallet in Constitution Article 7, custodied by the corporation. Any address that can receive a plain USDC transfer works; a hardware wallet is fine, since the agent never spends from it. Enter it in `CONSTITUTION.md` before genesis; after genesis it changes only through `rotate-destination`.
+4. **Anchoring.** Article 11 anchors the ledger head on Base at every fee adjustment, four times a day. `ANCHOR_PRIVATE_KEY` is a separate, low-value wallet holding a little ETH on Base for gas, roughly a cent a day. It is required on mainnet; `check` fails without it or with an empty balance.
+5. **Exchange rate.** Law 5 records the Canadian-dollar value of each payment. Unset `NOMICON_USDC_CAD` and the agent uses the Bank of Canada's daily USD/CAD average, cached twelve hours, falling back to a fixed rate if the feed is down. The rate used is written into each payment event.
+6. **Addresses and switches.** The public URL must be `https`, and `NOMICON_DOORBELL_ALLOW_PRIVATE` must be unset; `check` fails on either.
+7. **Run `nomicon check`** before genesis and after every configuration change. It prints one line per check and exits non-zero on any failure.

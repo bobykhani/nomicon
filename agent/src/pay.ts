@@ -7,6 +7,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
+import { createCdpFacilitatorClient } from "@coinbase/cdp-sdk/x402";
 import { x402HTTPResourceServer, type HTTPAdapter, type HTTPRequestContext } from "@x402/core/http";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import type { PaymentNotice } from "./ports.js";
@@ -16,9 +17,22 @@ import { RateLimiter, clientIp } from "./limits.js";
 
 export interface OpenQuote { pr: number; feeMicro: bigint; destination: string; expires: number }
 
+/** Who verifies and settles payments: a plain facilitator URL (x402.org settles testnets only), or Coinbase's, which settles Base mainnet and needs a CDP API key. */
+export type FacilitatorChoice = { kind: "url"; url: string } | { kind: "cdp"; apiKeyId: string; apiKeySecret: string };
+
+export function facilitatorFor(choice: FacilitatorChoice): HTTPFacilitatorClient {
+  // The CDP SDK is typed against the CommonJS build of @x402/core; the class is the same, the declarations are not.
+  if (choice.kind === "cdp") return createCdpFacilitatorClient({ apiKeyId: choice.apiKeyId, apiKeySecret: choice.apiKeySecret }) as unknown as HTTPFacilitatorClient;
+  return new HTTPFacilitatorClient({ url: choice.url });
+}
+
+export function describeFacilitator(choice: FacilitatorChoice): string {
+  return choice.kind === "cdp" ? "Coinbase CDP facilitator" : choice.url;
+}
+
 export interface PayServerOptions {
   network: "eip155:8453" | "eip155:84532";
-  facilitatorUrl: string;
+  facilitator: FacilitatorChoice;
   /** Current open quote for a pull request, or null. */
   quoteFor(pr: number): OpenQuote | null;
   onPaid(notice: PaymentNotice): Promise<void>;
@@ -50,7 +64,7 @@ function adapterFor(req: IncomingMessage, url: URL): HTTPAdapter {
 }
 
 export async function createPayServer(opts: PayServerOptions): Promise<{ server: Server; http: x402HTTPResourceServer }> {
-  const facilitator = new HTTPFacilitatorClient({ url: opts.facilitatorUrl });
+  const facilitator = facilitatorFor(opts.facilitator);
   const core = registerExactEvmScheme(new x402ResourceServer(facilitator), { networks: [opts.network] });
   const prOf = (path: string): number | null => {
     const m = /^\/pay\/(\d+)$/.exec(path);

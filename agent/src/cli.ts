@@ -25,6 +25,8 @@
  * NOMICON_OWNER_ACCOUNTS (comma-separated numeric ids), NOMICON_AGENT_ACCOUNT, NOMICON_FEE_DESTINATION,
  * NOMICON_DOORBELL_ISSUE (issue number accounts comment on to register a doorbell; unset disables),
  * NOMICON_DATA_DIR (private directory for doorbell URLs; default <repo root>/../nomicon-private),
+ * CDP_API_KEY_ID + CDP_API_KEY_SECRET (Coinbase facilitator, required on Base mainnet) or X402_FACILITATOR_URL (testnets),
+ * ANCHOR_PRIVATE_KEY (gas wallet for ledger anchors, required on mainnet), NOMICON_USDC_CAD (fixed rate; unset = Bank of Canada daily),
  * NOMICON_TRUST_PROXY=1 behind a reverse proxy that sets X-Forwarded-For,
  * NOMICON_DOORBELL_ALLOW_PRIVATE=1 accepts http and private doorbell addresses (local testing only).
  */
@@ -40,7 +42,9 @@ import { octokitFor, parseGitHubAuthEnv, type GitHubIdentity } from "./adapters/
 import { Notifier } from "./notifier.js";
 import { BaseChainAdapter, USDC } from "./adapters/chain.js";
 import { ClaudeScreen } from "./screen.js";
-import { createPayServer } from "./pay.js";
+import { createPayServer, describeFacilitator, type FacilitatorChoice } from "./pay.js";
+import { BankOfCanadaOracle } from "./adapters/oracle.js";
+import { preflight } from "./check.js";
 import { loadLaws } from "./laws.js";
 import type { PriceOracle } from "./ports.js";
 
@@ -136,13 +140,30 @@ async function main(argv: string[]): Promise<void> {
     }
     case "run": return run();
     case "record-payment": return recordPayment(Number(args[0]), args[1] ?? "");
+    case "check": return check();
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check>");
       process.exitCode = 1;
   }
 }
 
 type Network = "eip155:8453" | "eip155:84532";
+const MAINNET: Network = "eip155:8453";
+
+/** Mainnet settles only through a facilitator that supports it; x402.org settles testnets. */
+function facilitatorFromEnv(network: Network): FacilitatorChoice {
+  const id = process.env["CDP_API_KEY_ID"], secret = process.env["CDP_API_KEY_SECRET"];
+  if (id && secret) return { kind: "cdp", apiKeyId: id, apiKeySecret: secret };
+  const url = env("X402_FACILITATOR_URL", "https://x402.org/facilitator");
+  if (network === MAINNET && /x402\.org/.test(url)) throw new Error("x402.org settles test networks only; on Base mainnet set CDP_API_KEY_ID and CDP_API_KEY_SECRET (see RUNBOOK.md, Going to mainnet)");
+  return { kind: "url", url };
+}
+
+function oracleFromEnv(log: (m: string) => void): PriceOracle {
+  const fixed = process.env["NOMICON_USDC_CAD"];
+  if (fixed) return { usdcToCad: async () => fixed };
+  return new BankOfCanadaOracle("1.37", log);
+}
 
 /** Everything the runtime needs, built from the environment; shared by `run` and the owner commands that act through the runtime. */
 async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseChainAdapter; network: Network; log: (m: string) => void; publicBaseUrl: string; trustProxy: boolean }> {
@@ -156,12 +177,14 @@ async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseCh
   log(`github identity: ${identity.login} (${identity.id})`);
   const anchorKey = process.env["ANCHOR_PRIVATE_KEY"] as `0x${string}` | undefined;
   const chain = new BaseChainAdapter(network, env("BASE_RPC_URL"), anchorKey);
-  const oracle: PriceOracle = { usdcToCad: async () => env("NOMICON_USDC_CAD", "1.37") };
+  const oracle = oracleFromEnv(log);
   const publicBaseUrl = env("NOMICON_PUBLIC_URL");
+  if (network === MAINNET && !publicBaseUrl.startsWith("https://")) throw new Error("NOMICON_PUBLIC_URL must be https on mainnet");
   const doorbellIssue = process.env["NOMICON_DOORBELL_ISSUE"] ? Number(process.env["NOMICON_DOORBELL_ISSUE"]) : null;
   const dataDir = env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private"));
   const allowPrivate = process.env["NOMICON_DOORBELL_ALLOW_PRIVATE"] === "1";
   const trustProxy = process.env["NOMICON_TRUST_PROXY"] === "1";
+  if (allowPrivate && network === MAINNET) throw new Error("NOMICON_DOORBELL_ALLOW_PRIVATE must not be set on mainnet");
   if (allowPrivate) log("WARNING: NOMICON_DOORBELL_ALLOW_PRIVATE is set; private doorbell addresses are accepted. Never run like this in production.");
   const notifier = new Notifier({ github, doorbell: new HttpDoorbell({ allowPrivate }), store: new FileDoorbellStore(resolve(dataDir, "doorbells.json")), ledger: led, clock: { now }, log, doorbellIssue, allowPrivateDoorbells: allowPrivate });
   const rt = new Runtime({
@@ -174,9 +197,11 @@ async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseCh
 }
 
 async function run(): Promise<void> {
-  const { rt, network, publicBaseUrl, trustProxy } = await buildRuntime();
+  const { rt, network, publicBaseUrl, trustProxy, log } = await buildRuntime();
+  const facilitator = facilitatorFromEnv(network);
+  log(`network ${network}, facilitator ${describeFacilitator(facilitator)}`);
   const { server } = await createPayServer({
-    network, facilitatorUrl: env("X402_FACILITATOR_URL", "https://x402.org/facilitator"),
+    network, facilitator,
     quoteFor: (pr) => rt.quoteFor(pr), onPaid: (n) => rt.onPaid(n), now, publicBaseUrl,
     feed: (since) => rt.feed(since), questions: () => rt.questionsIndex(),
     limits: { trustProxy },
@@ -187,6 +212,26 @@ async function run(): Promise<void> {
     try { await rt.tick(); } catch (e) { console.error(new Date().toISOString(), "tick failed:", (e as Error).message); }
     await new Promise((r) => setTimeout(r, interval));
   }
+}
+
+/** Verify the configuration against the live services without moving money. Exit 1 on any failure. */
+async function check(): Promise<void> {
+  const network = env("NOMICON_NETWORK", "eip155:84532") as Network;
+  let facilitator: FacilitatorChoice | Error;
+  try { facilitator = facilitatorFromEnv(network); } catch (e) { facilitator = e as Error; }
+  const results = await preflight({
+    network, rpcUrl: env("BASE_RPC_URL"), usdc: USDC[network], destination: process.env["NOMICON_FEE_DESTINATION"] ?? null,
+    publicBaseUrl: process.env["NOMICON_PUBLIC_URL"] ?? "", facilitator, anchorKey: process.env["ANCHOR_PRIVATE_KEY"] ?? null,
+    allowPrivate: process.env["NOMICON_DOORBELL_ALLOW_PRIVATE"] === "1", dataDir: env("NOMICON_DATA_DIR", resolve(root(), "..", "nomicon-private")),
+    anthropicKey: !!process.env["ANTHROPIC_API_KEY"],
+    github: async () => { const { github, identity } = await githubFromEnv(); const pulls = await github.listOpenPulls(); return `${identity.login} (${identity.id}), ${pulls.length} open pull request(s) readable`; },
+    ledgerKey: () => { const s = signer(); return s.publicKeyPem().split("\n")[1]?.slice(0, 16) ?? ""; },
+    ledger: () => { const l = ledger(); const g = l.events.find((e) => e.type === "genesis"); return g ? { agentAccount: Number(g["agent_account"]), destination: String(g["fee_destination"]), network: String(g["network"]) } : null; },
+  });
+  let failed = 0;
+  for (const r of results) { if (!r.ok && r.severity === "fail") failed++; console.log(`${r.ok ? "ok  " : r.severity === "fail" ? "FAIL" : "warn"}  ${r.name}: ${r.detail}`); }
+  console.log(failed ? `${failed} check(s) failed` : "all checks passed");
+  if (failed) process.exitCode = 1;
 }
 
 /** A payment the facilitator settled but the agent failed to record: verify the transfer on chain, then record it through the same path as a live payment. */
