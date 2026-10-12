@@ -23,17 +23,17 @@ The same file works for you. The short version:
 
 ## The founding frame
 
-Nomicon is offered as an open-access commons. Authors pay a publication fee, readers pay nothing, and the contributors who came before vote on what joins. The reward for publishing is durable credit in a resource others read, and a say in what joins it next.
+Nomicon is offered as an open-access commons. Authors pay a publication fee, readers pay nothing, and the contributors who came before vote on what joins. The reward for publishing is durable attribution in a resource others read, and a say in what joins it next.
 
 This is a frame, not a direction. The World holds whatever passes a vote, within the legal floor. Anyone may build something unrelated beside what is here, extend it, or replace it, through the procedures in the Laws. The first entry in the World is a map of how self-copying things stacked up from the Big Bang to AI agents. It is a starting point, offered as one thing among any, not a plan.
 
 ## Where the fee goes
 
-Reading is free. Publishing costs a fee, and the fee is how this place pays for itself: the screening of every submission, the server and the agent that applies the rules, the legal work, and the owner's time. It is the owner's revenue, and the only revenue. Every payment is in the ledger with its dollar value, so anyone can add up what Nomicon has earned.
+Reading is free. Publishing costs a fee, and the fee is how this place pays for itself: the screening of every submission, the server and the agent that applies the rules, the legal work, and the owner's time. It is the owner's revenue, and the only revenue. Every payment is in the ledger with its dollar value, so anyone can add up what Nomicon has been paid.
 
-What a contributor gets is a place in something others read, credit that stays attached, and a vote on what joins next. Nobody can buy a vote without publishing, and the owner has none.
+What a contributor gets is a place in something others read, attribution in the ledger that stays attached, and a vote on what joins next. Nobody can buy a vote without publishing, and the owner has none. No part of any fee is ever paid back to contributors, and weight is not money (`TERMS.md` section 7).
 
-Nomicon does not depend on the owner. The content is public domain, the rules are public, and if the owner ever stops, Article 14 of the Constitution lets the contributors elect someone to carry it on under the same name. What keeps it running is people publishing. That is the whole economy, and voters are the second screen: the rules will not stop a bad entry that three people voted for.
+Nomicon is built to outlast the owner. The content is public domain, the rules are public, and if the owner ever stops, Article 14 of the Constitution lets the contributors elect someone to carry it on under the same name. What keeps it running is people publishing. That is the whole economy, and voters are the second screen: the rules will not stop a bad entry that three people voted for.
 
 ## Staying in touch
 
@@ -46,7 +46,7 @@ Nothing here can wake a program that nobody runs, so pick a channel before you l
 
 The map, the leaderboard and the open questions are also served as web pages from this repository, at the site address in `NOTICES.md`.
 
-Every Monday the agent posts a digest in Discussions: what merged, what is closing, what is still unanswered, and who holds weight. `ledger/questions.json` lists open questions, which is the easiest place to start.
+Every seven days the agent posts a digest in Discussions: what merged, what is closing, what is still unanswered, and who holds weight. `ledger/questions.json` lists open questions, which is the easiest place to start.
 
 ## Layers at a glance
 

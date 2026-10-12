@@ -25,21 +25,24 @@ Types:
 | `vote_queued` | paid, waiting for a place to open its vote (Law 2) | `pr`, `payment` (event id), `position`, `max_open` |
 | `quote_lapsed` | quote expired unpaid | `pr` |
 | `hold_resolved` | owner released or rejected a hold | `pr`, `decision`, `reason` |
-| `quote` | fee quoted | `pr`, `head`, `layer`, `fee_micro`, `base_micro`, `multiplier`, `concurrency`, `size_kb`, `terms_commit`, `destination`, `expires`, `screening` (`model`, `reused`, `released`), `screened_bytes` |
+| `quote` | fee quoted | `pr`, `head`, `layer`, `fee_micro`, `base_micro`, `multiplier`, `concurrency`, `size_kb`, `terms_commit`, `destination`, `expires`, `screening` (`model`, `reused`, `released`), `screened_bytes`, `bytes` (diff bytes, for Law 6), `queue_ahead`, `tax`, `tax_registration` |
 | `payment` | payment verified | `pr`, `tx`, `block`, `block_time`, `amount_micro`, `from`, `cad_value`, `cad_rate` (USD/CAD used), `matched` |
-| `vote_open` | window opened | `pr`, `head`, `opened`, `closes`, `laws_hash`, `qualified` (list of account ids) |
+| `vote_open` | window opened | `pr`, `head`, `opened`, `closes`, `laws_hash`, `qualified` (list of account ids), `authors`, `commits` (sha, author, verified) |
 | `review` | a review by a qualified voter, recorded when the agent sees it during the window (Law 13) and complete at close | `pr`, `account`, `login`, `review_id`, `state`, `submitted` |
 | `vote_close` | tally | `pr`, `yes_voters`, `yes_micro`, `no_micro`, `tie` (equal weight, no decision), `tally_result`, `result` (`merge`, `reject`, `expire`, `await_owner`) |
 | `merge` | merged | `pr`, `head`, `merge_commit`, `weight_micro`, `account`, `paths`, `headers` (per path: question, answers, cites), `bytes` (files added or changed) |
 | `withdrawal` | author pushed, closed or drafted after open | `pr`, `fee_disposition` |
-| `expiry` | expired | `pr`, `held_until` |
+| `expiry` | expired | `pr`, `held_until` (90 days, or 365 when the owner caused the expiry), `reason` |
+| `merge_deferred` | passed, waiting for the World growth budget (Law 2.6) | `pr`, `reason` |
+| `bar_lifted` | the owner lifted a 90-day bar after a response (Law 10) | `account`, `reason`, `by` |
+| `owner_accounts_change` | an owner account named under Article 6, effective fourteen days later | `account`, `effective_at`, `reason`, `by` |
 | `owner_confirm` / `owner_reject` | bootstrap decision | `pr`, `reason` |
 | `fee_adjust` | base fee changed | `base_micro`, `submissions_24h`, `target`, `anchor_tx` |
 | `takedown` | Article 5 | `paths`, `notice_hash`, `weight_revoked` |
 | `redaction` | content removed from ledger | `event_id`, `hash` |
 | `patch` / `deploy` | agent code | `commit`, `reason` |
 | `destination_change` | Article 7 | `destination`, `by` |
-| `key_rotation` | Article 11: the ledger signing key changes from the next event on | `new_public_key` (PEM), `commit` (owner's announcement on `main`), `reason`, `by`; after a lost key also `lost: true` and `announced_at`, and the event is signed by the new key |
+| `key_rotation` | Article 11: the ledger signing key changes from the next event on | `new_public_key` (PEM), `commit` (owner's announcement on `main`), `reason`, `by`; after a lost key instead `tx` (the announcing transaction from the fee destination), `announced_at` (its block time), `announced_from`, `lost: true`, and the event is signed by the new key |
 | `agent_account_change` | owner custody of the agent's platform identity (Article 6), e.g. moving to a GitHub App or to a successor operator | `agent_account`, `login`, `reason`, `by` |
 | `declare` | bootstrap end, maintenance window | `what`, `constitution_hashes` |
 | `correction` | replay found an error | `event_id`, `evidence` |
@@ -67,7 +70,7 @@ Recomputed from the event files by the replay tool.
 | `weights` | map of account id to `{login, mature_micro, immature_micro, last_vote_at}` |
 | `weighted_accounts` | count of accounts with mature weight above zero |
 | `open_votes` | list of `{pr, closes, laws_hash}` |
-| `held_fees` | list of `{account, layer, micro, until}` |
+| `held_fees`, `held_in_use` (held fees applied to submissions still undecided, by pull request) | list of `{account, layer, micro, until}` |
 | `deployed_agent` | commit hash |
 
 Anyone can recompute `state.json` from the event files and the rules with the replay tool in `agent/`. If the recomputation differs from the published state, the published state is wrong.

@@ -44,6 +44,8 @@ export class Sim {
   rt: Runtime;
   checks: Check[] = [];
   notes: string[] = [];
+  /** The runtime's own log lines, for checks; kept out of the report. */
+  logs: string[] = [];
   private lawsSource: { rawLaws: string; rawSchema: string };
   private lawsHashUsed: string;
 
@@ -65,6 +67,7 @@ export class Sim {
     this.rt = new Runtime({
       github: this.github, chain: this.chain, screen: this.screen, oracle: new FixedOracle(), clock: this.clock, ledger: this.ledger,
       publicBaseUrl: "https://pay.sim", loadLaws: async () => this.lawsSource, termsCommit: async () => "tt".repeat(20), notifier,
+      log: (m) => this.logs.push(m),
     });
     this.ledger.append(T0, "genesis", { head: "aa".repeat(20), laws_hash: this.lawsHashUsed, owner_accounts: [OWNER.id], owner_keys: [this.signer.publicKeyPem()], agent_account: 101, fee_destination: "0xdest", network: "eip155:84532" });
     this.ledger.append(T0, "laws_snapshot", { pr: null, laws_hash: this.lawsHashUsed, laws_raw: this.lawsSource.rawLaws, schema_raw: rawSchema, effective_at: T0, merge_commit: "aa".repeat(20) });

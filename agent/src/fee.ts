@@ -38,15 +38,20 @@ export function quote(input: QuoteInput, laws: Laws): Quote {
 export interface AdjustInput {
   baseMicro: bigint;
   paidSubmissionsInLookback: number;
-  /** Votes cast by qualified voters in the target lookback. */
+  /** Votes, one per voter per contribution, on contributions whose close reached quorum, in the target lookback. */
   qualifiedVotesInLookback: number;
+  /** Merges in the target lookback. */
+  mergesInLookback: number;
+  /** Law 5: more paid contributions wait for a vote than may be open at once; demand exceeds capacity whatever the day's payments say. */
+  queueAboveOpenLimit: boolean;
 }
 
-/** Law 5 throughput target, contributions per day. */
-export function throughputTarget(qualifiedVotes: number, laws: Laws): number {
+/** Law 5 throughput target, contributions per day: from demonstrated review capacity, never more than twice the week's merges above the minimum. */
+export function throughputTarget(qualifiedVotes: number, merges: number, laws: Laws): number {
   const f = laws.fee;
-  const perDay = (f.target_capacity_fraction * qualifiedVotes) / f.target_lookback_days / f.target_votes_per_contribution;
-  return Math.max(f.target_min_per_day, Math.floor(perDay));
+  const fromVotes = Math.floor((f.target_capacity_fraction * qualifiedVotes) / f.target_lookback_days / f.target_votes_per_contribution);
+  const fromMerges = f.target_min_per_day + Math.floor((2 * merges) / f.target_lookback_days);
+  return Math.max(f.target_min_per_day, Math.min(fromVotes, fromMerges));
 }
 
 /** One step of the control loop. Returns the new base. */
@@ -54,10 +59,10 @@ export function adjustBase(input: AdjustInput, laws: Laws): { baseMicro: bigint;
   const f = laws.fee;
   const floor = usdcToMicro(f.floor_usdc);
   const cap = floor * BigInt(f.cap_multiple_of_floor);
-  const target = throughputTarget(input.qualifiedVotesInLookback, laws);
+  const target = throughputTarget(input.qualifiedVotesInLookback, input.mergesInLookback, laws);
   const perDay = (input.paidSubmissionsInLookback * 24) / f.lookback_hours;
   let next = input.baseMicro;
-  if (perDay > target) next = (next * BigInt(100 + f.rise_step_percent)) / 100n;
+  if (perDay > target || input.queueAboveOpenLimit) next = (next * BigInt(100 + f.rise_step_percent)) / 100n;
   else if (perDay < target) next = (next * BigInt(100 - f.fall_step_percent)) / 100n;
   if (next < floor) next = floor;
   if (next > cap) next = cap;

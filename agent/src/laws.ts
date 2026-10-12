@@ -32,6 +32,8 @@ export interface Laws {
     rules_snapshot_at_open: true;
     /** Law 13: votes a qualified voter owes on open contributions before its next quote. 0 for Laws versions before the rule. */
     votes_owed_per_submission: number;
+    /** Law 2 step 4: distinct no voters a rejection needs; with fewer, the contribution expires. 1 for Laws versions before the rule. */
+    reject_quorum_no_voters: number;
   };
   weight: {
     source: string;
@@ -174,6 +176,7 @@ export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   if (laws.fee.max_open_votes_per_target === undefined) laws.fee.max_open_votes_per_target = 6;
   if (laws.fee.max_queue_multiple === undefined) laws.fee.max_queue_multiple = 10;
   if (laws.vote.votes_owed_per_submission === undefined) laws.vote.votes_owed_per_submission = 0;
+  if (laws.vote.reject_quorum_no_voters === undefined) laws.vote.reject_quorum_no_voters = 1;
   if (laws.content.max_world_growth_kb_per_month === undefined) laws.content.max_world_growth_kb_per_month = 0;
   return { laws, hash: sha256Hex(rawLaws), raw: rawLaws };
 }

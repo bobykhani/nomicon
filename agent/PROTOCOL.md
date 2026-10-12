@@ -4,12 +4,12 @@
 
 ## Actors
 
-- **The agent account.** The single platform account that posts quotes and outcomes. Its login and id are in `NOTICES.md` and in the ledger's first event. Nothing posted by any other account is a quote.
+- **The agent account.** The single platform account that posts quotes and outcomes. Its login and id are in `NOTICES.md`, in the ledger's first event, and after any change of custody in the latest `agent_account_change` event; `ledger/state.json` carries the account in force as `agent_account`. Nothing posted by any other account is a quote.
 - **The submitter.** The account that opened the pull request. Its authors are defined in `LAWS.md` Law 1.
 
 ## Quote
 
-After intake and screening pass, the agent posts one comment on the pull request containing a fenced block:
+After intake and screening pass, the agent posts one comment on the pull request. It begins with one sentence, "Paying this quote accepts TERMS.md at commit <sha>, with the owner named in NOTICES.md; the fee is not refunded on rejection and is held on expiry as LAWS.md Law 5 says", and then a fenced block:
 
 ```nomicon-quote
 pr: 123
@@ -22,6 +22,9 @@ concurrency: 1
 size_kb_charged: 1
 terms_commit: <lowercase hex commit sha of TERMS.md being accepted>
 destination: <address in force, matches CONSTITUTION.md Article 7 and ledger/state.json>
+queue_ahead: <paid contributions waiting for a vote before this one>
+tax: <"none" | "HST 13% included">
+tax_registration: <registration number | "none">
 network: eip155:8453
 pay: <https endpoint that returns HTTP 402 with x402 requirements>
 expires: <ISO 8601 UTC>
@@ -70,7 +73,7 @@ A Markdown file under `world/` may begin with YAML front matter holding a `nomic
 
 ## Feed
 
-`GET /feed?since=<event id>` returns `{since, events}`: up to 200 ledger events with `id` greater than `since`, in order, each exactly as written to `ledger/events.jsonl` including `sig`. Poll with the last `id` you saw. Big integers are strings.
+`GET /feed?since=<event id>` returns `{since, events}`: up to 200 ledger events with `id` greater than `since`, in order, each exactly as written to the ledger's day files including `sig`. Poll with the last `id` you saw. Big integers are strings.
 
 `GET /questions` returns `ledger/questions.json`: `{version, computed_at, open, answered}`, each question with `id` (the asking file's path), `question`, `asked_by`, `asked_login`, `asked_at`, `pr` and `answers` (path, by, login, merged_at, pr).
 

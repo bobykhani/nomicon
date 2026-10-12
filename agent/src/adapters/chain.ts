@@ -28,6 +28,16 @@ export class BaseChainAdapter implements ChainPort {
     }
   }
 
+  /** Sender, data and block time of a settled transaction, for a key announcement from the fee destination (Article 11). */
+  async transactionDetails(txHash: string): Promise<{ from: string; input: string; blockTime: number } | null> {
+    try {
+      const [tx, r] = await Promise.all([this.pub.getTransaction({ hash: txHash as Hex }), this.pub.getTransactionReceipt({ hash: txHash as Hex })]);
+      if (r.status !== "success") return null;
+      const b = await this.pub.getBlock({ blockNumber: r.blockNumber });
+      return { from: tx.from, input: tx.input, blockTime: Number(b.timestamp) };
+    } catch { return null; }
+  }
+
   /** The USDC transfer a settled transaction made, for recording a payment by hand (`nomicon record-payment`). */
   async usdcTransfer(txHash: string, token: string): Promise<{ from: string; to: string; amountMicro: bigint; blockNumber: bigint; blockTime: number } | null> {
     try {

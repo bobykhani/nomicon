@@ -3,13 +3,13 @@
  * no whitespace, bigints as decimal strings) is what gets signed.
  */
 import { createHash, sign as edSign, verify as edVerify, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
 export type EventType =
   | "genesis" | "intake_reject" | "screen_hold" | "hold_resolved" | "quote" | "quote_lapsed" | "payment" | "vote_open" | "review"
   | "vote_close" | "merge" | "withdrawal" | "expiry" | "owner_confirm" | "owner_reject" | "fee_adjust"
-  | "takedown" | "redaction" | "patch" | "deploy" | "destination_change" | "agent_account_change" | "screen_deferred" | "vote_queued" | "key_rotation" | "declare" | "correction" | "refusal"
+  | "takedown" | "redaction" | "patch" | "deploy" | "destination_change" | "agent_account_change" | "screen_deferred" | "vote_queued" | "key_rotation" | "merge_deferred" | "bar_lifted" | "owner_accounts_change" | "declare" | "correction" | "refusal"
   | "laws_snapshot" | "owner_action_applied" | "channel" | "notice" | "digest";
 
 export interface LedgerEvent {
@@ -59,15 +59,21 @@ export function keyInForce(events: LedgerEvent[], initialPem: string): string {
  */
 export function verifyLedgerSignatures(events: LedgerEvent[], initialPem: string): Array<{ event: number; problem: string }> {
   const findings: Array<{ event: number; problem: string }> = [];
-  let current = initialPem;
+  let current = initialPem, lastPlannedRotationAt = 0;
   for (const e of events) {
     if (e.type === "key_rotation") {
       const next = typeof e["new_public_key"] === "string" ? e["new_public_key"] : "";
       if (!next.includes("BEGIN PUBLIC KEY")) { findings.push({ event: e.id, problem: "key rotation names no public key" }); continue; }
       if (e["lost"] === true) {
+        // Article 11: announced by a transaction from the fee destination; its block time is the clock; a planned rotation in the meantime prevails.
+        if (typeof e["tx"] !== "string") findings.push({ event: e.id, problem: "rotation after a lost key cites no announcing transaction" });
         if (!(e.at - Number(e["announced_at"]) >= ROTATION_WAIT_DAYS * 86400)) findings.push({ event: e.id, problem: `rotation after a lost key sooner than ${ROTATION_WAIT_DAYS} days after its announcement` });
+        if (lastPlannedRotationAt > Number(e["announced_at"])) findings.push({ event: e.id, problem: "a rotation by the key in force followed the announcement; the lost-key rotation does not stand" });
         if (!verifyEvent(e, next)) findings.push({ event: e.id, problem: "rotation after a lost key not signed by the new key" });
-      } else if (!verifyEvent(e, current)) findings.push({ event: e.id, problem: "rotation not signed by the key in force" });
+      } else {
+        if (!verifyEvent(e, current)) findings.push({ event: e.id, problem: "rotation not signed by the key in force" });
+        lastPlannedRotationAt = e.at;
+      }
       current = next;
       continue;
     }
@@ -142,7 +148,8 @@ export class Ledger {
   private running = createHash("sha256");
   private dirty = new Set<string>();
   private lastSegmentStart = 0;
-  constructor(readonly dir: string, private signer?: Signer) {
+  /** `initialPem` is the key named in the Constitution; rotations are followed from it. Defaults to the signer's own key. */
+  constructor(readonly dir: string, private signer?: Signer, private initialPem?: string) {
     for (const e of readLedgerDir(dir)) this.adopt(e);
   }
   get head(): number { return this.events.length; }
@@ -199,9 +206,11 @@ export class Ledger {
     const lock = join(this.dir, "events.lock");
     const deadline = Date.now() + 10_000;
     for (;;) {
-      try { const fd = openSync(lock, "wx"); closeSync(fd); break; }
+      try { const fd = openSync(lock, "wx"); writeSync(fd, `${process.pid} ${new Date().toISOString()}`); closeSync(fd); break; }
       catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+        // A lock older than a minute belongs to a process that died holding it; an append takes milliseconds.
+        try { if (Date.now() - statSync(lock).mtimeMs > 60_000) { unlinkSync(lock); continue; } } catch { /* raced */ }
         if (Date.now() > deadline) throw new Error("ledger lock held for more than 10 seconds: " + lock);
         const until = Date.now() + 50; while (Date.now() < until) { /* spin briefly */ }
       }
@@ -214,6 +223,10 @@ export class Ledger {
     return this.withLock(() => {
       if (existsSync(join(this.dir, "events.jsonl"))) throw new Error("ledger/events.jsonl is the old single-file ledger; run `nomicon migrate-ledger` first");
       this.reload();
+      // Article 11: only the key in force signs. A rotation recorded by another process stops this one here, not after a stray signature.
+      if (this.signer && !samePem(keyInForce(this.events, this.initialPem ?? this.signer.publicKeyPem()), this.signer.publicKeyPem())) {
+        throw new Error("the configured signing key is not the ledger key in force (Article 11); configure the key the ledger names and restart");
+      }
       const last = this.events[this.events.length - 1];
       if (last && at < last.at) at = last.at; // one ledger, one clock: time does not run backwards across segments
       const e: LedgerEvent = { id: this.head + 1, at, type, ...fields };

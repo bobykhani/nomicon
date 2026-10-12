@@ -62,12 +62,13 @@ On receipt of a valid legal notice, or where the owner determines in good faith 
 The owner is [CORPORATION NAME], a corporation under the laws of Ontario, Canada. The owner holds exactly these powers and no others:
 
 - the takedown power in Article 5;
-- resolving a screening hold under Article 4, by releasing the contribution to a vote or rejecting it, with the reason recorded;
+- resolving a screening hold under Article 4, by releasing the contribution to a vote or rejecting it, with the reason recorded as the ground of Article 4 relied on and without allegations of fact about any person;
 - custody of the repository, its infrastructure, its keys and its name, including moving the repository to another host, recorded in the ledger, with the Laws' references to platform features read as their closest equivalent until a Laws vote updates them;
 - designating and rotating the fee destination under Article 7;
 - deploying and patching the enforcement agent under Article 8;
 - the bootstrap powers in Article 3;
 - maintaining `NOTICES.md` and `PRIVACY.md`;
+- naming replacement or additional owner accounts and keys by a command recorded in the ledger from an account or key then in force, effective fourteen days after it is recorded;
 - the duties in Article 14.
 
 The owner has no vote weight. The owner may publish like any contributor, paying the fee, and earns no weight by doing so.
@@ -112,6 +113,7 @@ No Law may:
 - set the fee cap below two times or above one hundred times the floor;
 - set the per-contribution size cap below sixty-four kilobytes or above eight megabytes;
 - set the size component of the fee below one hundredth of a USDC per kilobyte, or exempt more than sixty-four kilobytes of a contribution from it;
+- hold an expired fee for less than ninety days;
 - assign any path outside `world/` to the World;
 - treat anything other than the platform's approve and request-changes review states as votes;
 - hold an expired fee for more than three hundred and sixty-five days;
@@ -130,9 +132,9 @@ Every commit by a contributor carries a Developer Certificate of Origin sign-off
 
 All votes, payments, agent decisions, holds, confirmations, rejections, patches, deployments and takedowns are public in `ledger/`. The ledger records every input to every decision, including each review with its account identifier and timestamp, and each payment's transaction hash, so that replay needs nothing outside this repository and the fee network. Screening holds are recorded but are not replayable.
 
-The ledger is permanent except where Article 5 or the law requires removal; a removal is recorded as a redaction event that keeps the hash of what was removed. Ledger entries are signed with a key whose public half is `[LEDGER SIGNING PUBLIC KEY]`, and the hash of the ledger head is anchored on the fee network at every fee adjustment.
+The ledger is permanent except where Article 5 or the law requires removal; a removal is recorded as a redaction event that keeps the hash of what was removed. Ledger entries are signed with a key whose public half is `[LEDGER SIGNING PUBLIC KEY]`, and the owner anchors the hash of the ledger head on the fee network at each fee adjustment where it can; a missed anchor is recorded and does not affect replay.
 
-The signing key may be replaced. A replacement is a key rotation event, signed by the key in force, naming the public key that signs from the next event on, and citing a commit on `main` by an owner account named in the ledger's first event that announces the same key. Both are required, so a stolen key alone cannot rotate and a stolen account alone cannot either. If the key in force is lost, the owner announces the new key in such a commit, and after fourteen days the new key may sign the rotation event itself, citing that commit; the fourteen days let anyone holding the old key sign a contrary rotation first. Replay follows the chain of rotations from the key named in this Article.
+The signing key may be replaced. A replacement is a key rotation event, signed by the key in force, naming the public key that signs from the next event on, and citing a commit on `main` by an owner account named in the ledger's first event that announces the same key. Both are required, so a stolen key alone cannot rotate and a stolen account alone cannot either. If the key in force is lost, the owner announces the new key by a transaction on the fee network sent from the fee destination in force and carrying the hash of the new public key; fourteen days after that transaction's block, the new key may sign the rotation event itself, citing the transaction. The block's timestamp cannot be set by anyone, and the destination is held apart from the servers, so a lost key costs fourteen days and a stolen account alone still cannot rotate. A rotation signed by the key in force during those fourteen days prevails. Replay follows the chain of rotations from the key named in this Article.
 
 ## Article 12. Forks and the name
 
@@ -144,8 +146,8 @@ The Laws change only by the Laws procedure. After bootstrap, this Constitution a
 
 ## Article 14. Continuity
 
-A lapse occurs when either of these holds and no maintenance window the owner declared in advance in the ledger covers the period: a paid contribution whose window has closed has awaited the agent's decision for ninety consecutive days; or the owner has been dissolved according to a public corporate registry.
+A lapse occurs when either of these holds and no maintenance window the owner declared in advance in the ledger covers the period: a paid contribution has awaited the opening of its window, or a decision after its close, for ninety consecutive days; or the owner has been dissolved according to a public corporate registry.
 
 After a lapse, any contributor may give notice by opening an unpaid pull request titled "Continuity notice" that records the evidence, and by writing to the contact address in `NOTICES.md`. If thirty days after that notice no decision has been recorded in the ledger, contributors may elect a successor operator on that pull request by the Laws procedure, without fee, using the weights in the last published `ledger/state.json`. Any contributor may tally the election with the replay tool; the earliest valid passing election wins, and the tally with its inputs is the first event in the successor's ledger.
 
-The owner grants now, irrevocably and royalty-free, to whichever operator is so elected, a licence to use the name Nomicon for the elected fork. The successor's copies of this Constitution and of `TERMS.md` differ from the originals only by naming the successor as owner and by stating its contact address, its fee destination and its keys. Those substitutions are the only amendments Article 13 permits, and only in that fork. The original owner's fee wallet remains the original owner's.
+The owner grants now, irrevocably and royalty-free, to whichever operator is so elected, a licence to use the name Nomicon for the elected fork, conditional on the fork being operated under this Constitution and these Terms, and ending if it is not. The successor's copies of this Constitution and of `TERMS.md` differ from the originals only by naming the successor as owner and by stating its contact address, its fee destination and its keys. Those substitutions are the only amendments Article 13 permits, and only in that fork. The original owner's fee wallet remains the original owner's.

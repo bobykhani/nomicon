@@ -46,7 +46,8 @@ import { ClaudeScreen } from "./screen.js";
 import { createPayServer, describeFacilitator, type FacilitatorChoice } from "./pay.js";
 import { BankOfCanadaOracle } from "./adapters/oracle.js";
 import { preflight } from "./check.js";
-import { loadLaws } from "./laws.js";
+import { loadLaws, sha256Hex } from "./laws.js";
+import { phaseOf } from "./phases.js";
 import type { PriceOracle } from "./ports.js";
 
 const env = (k: string, def?: string): string => {
@@ -62,7 +63,10 @@ function signer(): Signer {
   const pem = existsSync(k) ? readFileSync(k, "utf8") : k;
   return new Signer(pem);
 }
-function ledger(): Ledger { return new Ledger(resolve(root(), "ledger"), signer()); }
+function ledger(): Ledger {
+  const p = resolve(root(), "ledger/public-key.pem");
+  return new Ledger(resolve(root(), "ledger"), signer(), existsSync(p) ? readFileSync(p, "utf8") : undefined);
+}
 
 /** The public key signing the ledger now: the Constitution's key (ledger/public-key.pem) followed through rotations. */
 function ledgerKeyInForce(led: Ledger): { inForce: string; configured: string; matches: boolean } {
@@ -87,14 +91,20 @@ async function rotateKey(args: string[], lost: boolean): Promise<void> {
     console.log(`recorded event ${e.id}: key_rotation. Switch NOMICON_LEDGER_KEY to the new private key and restart the agent; the old key signs nothing from now on.`);
     return;
   }
-  const [privPath, commit, announced, ...rest] = args;
-  if (!privPath || !commit || !announced || !rest.length) throw new Error('usage: nomicon rotate-key-lost <new-private-key.pem> <announcing commit sha> <announcement time, ISO 8601> "<reason>"');
-  const announcedAt = Math.floor(Date.parse(announced) / 1000);
-  if (!Number.isFinite(announcedAt)) throw new Error("announcement time must be ISO 8601");
-  if (now() - announcedAt < ROTATION_WAIT_DAYS * 86400) throw new Error(`the announcement must be at least ${ROTATION_WAIT_DAYS} days old; it is ${Math.floor((now() - announcedAt) / 86400)} days`);
+  const [privPath, tx, ...rest] = args;
+  if (!privPath || !tx || !rest.length) throw new Error('usage: nomicon rotate-key-lost <new-private-key.pem> <announcing transaction hash> "<reason>"');
   const next = new Signer(readFileSync(privPath, "utf8"));
-  const l = new Ledger(resolve(root(), "ledger"), next);
-  const e = l.append(now(), "key_rotation", { new_public_key: next.publicKeyPem(), commit, announced_at: announcedAt, lost: true, reason: rest.join(" "), by });
+  const network = env("NOMICON_NETWORK", "eip155:84532") as Network;
+  const chain = new BaseChainAdapter(network, env("BASE_RPC_URL"));
+  const t = await chain.transactionDetails(tx);
+  if (!t) throw new Error("that transaction is not found or did not succeed on the fee network");
+  const dest = replayFromFiles(root(), now()).state.fee.destination;
+  if (!dest || t.from.toLowerCase() !== dest.toLowerCase()) throw new Error(`the announcement must come from the fee destination in force ${dest}; this transaction is from ${t.from}`);
+  const want = "0x" + sha256Hex(next.publicKeyPem());
+  if (t.input.toLowerCase() !== want.toLowerCase()) throw new Error("the transaction's data is not the SHA-256 of the new public key");
+  if (now() - t.blockTime < ROTATION_WAIT_DAYS * 86400) throw new Error(`the announcement must be at least ${ROTATION_WAIT_DAYS} days old; its block is ${Math.floor((now() - t.blockTime) / 86400)} days old`);
+  const l = new Ledger(resolve(root(), "ledger"), next, next.publicKeyPem());
+  const e = l.append(now(), "key_rotation", { new_public_key: next.publicKeyPem(), tx, announced_at: t.blockTime, announced_from: t.from, lost: true, reason: rest.join(" "), by });
   console.log(`recorded event ${e.id}: key_rotation after a lost key. Set NOMICON_LEDGER_KEY to ${privPath} and restart the agent.`);
 }
 
@@ -124,6 +134,7 @@ async function main(argv: string[]): Promise<void> {
       const { privateKey, publicKey } = generateKeyPairSync("ed25519");
       console.log(privateKey.export({ type: "pkcs8", format: "pem" }));
       console.log(publicKey.export({ type: "spki", format: "pem" }));
+      console.log(`sha256 of the public key, the data a lost-key announcement carries (Article 11): 0x${sha256Hex(publicKey.export({ type: "spki", format: "pem" }) as string)}`);
       return;
     }
     case "genesis": {
@@ -190,12 +201,23 @@ async function main(argv: string[]): Promise<void> {
     }
     case "run": return run();
     case "record-payment": return recordPayment(Number(args[0]), args[1] ?? "");
+    case "lift-bar": {
+      const account = Number(args[0]), reason = args.slice(1).join(" ").trim();
+      if (!account || !reason) throw new Error('usage: nomicon lift-bar <account id> "<reason>"');
+      ownerCommand("bar_lifted", { account, reason }); return;
+    }
+    case "name-owner": {
+      const account = Number(args[0]), reason = args.slice(1).join(" ").trim();
+      if (!account || !reason) throw new Error('usage: nomicon name-owner <account id> "<reason>"');
+      ownerCommand("owner_accounts_change", { account, effective_at: now() + 14 * 86400, reason }); return;
+    }
+    case "pending": return pending();
     case "rotate-key": return rotateKey(args, false);
     case "rotate-key-lost": return rotateKey(args, true);
     case "migrate-ledger": { const n = Ledger.migrate(resolve(root(), "ledger")); console.log(`moved ${n} events into ledger/events/ by day; head.json written; events.jsonl removed`); return; }
     case "check": return check();
     default:
-      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check|migrate-ledger|rotate-key|rotate-key-lost>");
+      console.log("usage: nomicon <keygen|genesis|run|replay|confirm|reject|release|hold-reject|takedown|rotate-destination|set-agent-account|maintenance|end-bootstrap|deploy|patch|amend-laws|record-payment|check|migrate-ledger|rotate-key|rotate-key-lost|lift-bar|name-owner|pending>");
       process.exitCode = 1;
   }
 }
@@ -243,6 +265,7 @@ async function buildRuntime(): Promise<{ rt: Runtime; led: Ledger; chain: BaseCh
   const notifier = new Notifier({ github, doorbell: new HttpDoorbell({ allowPrivate }), store: new FileDoorbellStore(resolve(dataDir, "doorbells.json")), ledger: led, clock: { now }, log, doorbellIssue, allowPrivateDoorbells: allowPrivate });
   const rt = new Runtime({
     github, chain, screen: new ClaudeScreen(process.env["NOMICON_SCREEN_MODEL"] || undefined), oracle, clock: { now }, ledger: led, publicBaseUrl, notifier,
+    ...(process.env["NOMICON_TAX_INCLUDED"] ? { tax: { included: process.env["NOMICON_TAX_INCLUDED"], registration: process.env["NOMICON_TAX_REGISTRATION"] ?? "none" } } : {}),
     loadLaws: async () => ({ rawLaws: await github.readFile("main", "laws.json"), rawSchema: await github.readFile("main", "laws.schema.json") }),
     termsCommit: async () => env("NOMICON_TERMS_COMMIT", "main"),
     log,
@@ -288,6 +311,25 @@ async function check(): Promise<void> {
   if (failed) process.exitCode = 1;
 }
 
+/** What waits on the owner, with the clock on each (Articles 3, 4 and 14). */
+async function pending(): Promise<void> {
+  const led = ledger(), laws = loadLaws(root()).laws, t = now();
+  const days = (s: number) => Math.floor(s / 86400);
+  const prs = new Set<number>();
+  for (const e of led.events) if (e["pr"] !== undefined && e["pr"] !== null && (e.type === "quote" || e.type === "screen_hold")) prs.add(Number(e["pr"]));
+  const rows: string[] = [];
+  let oldestWait = 0;
+  for (const pr of [...prs].sort((a, b) => a - b)) {
+    const p = phaseOf(pr, led.events);
+    if (p.kind === "held") rows.push(`pr ${pr}: screening hold, ${days(t - p.since)} of ${laws.screening.hold_timeout_days} days used; release <pr> or hold-reject <pr>`);
+    else if (p.kind === "await_owner") rows.push(`pr ${pr}: vote closed (tally ${p.close["tally_result"]}), ${days(t - p.close.at)} of ${laws.bootstrap.owner_action_deadline_days} days used; confirm <pr> or reject <pr>`);
+    else if (p.kind === "paid") { const w = t - p.payment.at; oldestWait = Math.max(oldestWait, w); rows.push(`pr ${pr}: paid, waiting ${days(w)} days for a place`); }
+  }
+  for (const r of rows) console.log(r);
+  if (!rows.length) console.log("nothing waits on the owner");
+  if (oldestWait >= 60 * 86400) console.log(`WARNING: a paid contribution has waited ${days(oldestWait)} days; at 90 the Article 14 lapse begins`);
+}
+
 /** A payment the facilitator settled but the agent failed to record: verify the transfer on chain, then record it through the same path as a live payment. */
 async function recordPayment(pr: number, tx: string): Promise<void> {
   if (!pr || !tx) throw new Error("usage: nomicon record-payment <pr> <transaction hash>");
@@ -297,7 +339,7 @@ async function recordPayment(pr: number, tx: string): Promise<void> {
   if (!t) throw new Error("no successful USDC transfer found in that transaction");
   const dest = replayFromFiles(root(), now()).state.fee.destination;
   if (!dest || t.to.toLowerCase() !== dest.toLowerCase()) throw new Error(`the transfer went to ${t.to}, not the destination in force ${dest}`);
-  await rt.onPaid({ pr, tx, payer: t.from, amountMicro: t.amountMicro, network });
+  await rt.onPaid({ pr, tx, payer: t.from, amountMicro: t.amountMicro, network, acceptedWhileOpen: false });
   console.log(`payment recorded for pr ${pr}: ${t.amountMicro} micro-USDC from ${t.from} in block ${t.blockNumber}`);
 }
 

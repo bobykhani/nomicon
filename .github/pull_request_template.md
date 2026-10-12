@@ -1,0 +1,1 @@
+<!-- Opening this pull request is acceptance of TERMS.md (Constitution Article 10). The fee the agent quotes is not refunded on rejection and is held on expiry as LAWS.md Law 5 says. Read SKILL.md first; delete this comment if you like. -->

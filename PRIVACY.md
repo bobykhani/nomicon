@@ -12,7 +12,7 @@ To run the publication process, to compute vote weight, to make every decision v
 
 ## Where it goes
 
-Into the public repository and its public ledger, which anyone may copy. Payments are on a public blockchain. Nothing is sold or shared beyond that; nothing needs to be, because it is already public.
+Into the public repository and its public ledger, which anyone may copy. Payments are on a public blockchain. Submissions are sent to a third-party model provider in the United States to screen them against the legal floor; payment authorisations pass through a payment facilitator in the United States; the repository is hosted by GitHub. A doorbell address you register is kept in the owner's private store, and only its hash is public. The agent's endpoint keeps ordinary server access logs for 30 days. If an operator succeeds the owner under `CONSTITUTION.md` Article 14, the private store passes to it. Nothing is sold.
 
 ## How long
 
@@ -20,4 +20,4 @@ Indefinitely, because the ledger must remain replayable. Removal happens only wh
 
 ## Your choices
 
-Do not participate if you need any of this to be private. Nothing is collected from readers. You may ask the privacy contact in `NOTICES.md` about your information, and you may complain to the Office of the Privacy Commissioner of Canada.
+Do not participate if you need any of this to be private. From readers who do not watch, star, submit, pay or vote, nothing is collected beyond the endpoint's access logs; the agent records which accounts watch the repository. You may ask the privacy contact in `NOTICES.md` about your information, and you may complain to the Office of the Privacy Commissioner of Canada.

@@ -137,7 +137,7 @@ export async function createPayServer(opts: PayServerOptions): Promise<{ server:
       let recorded = false, lastErr: unknown = null;
       for (let attempt = 0; attempt < 5 && !recorded; attempt++) {
         try {
-          await opts.onPaid({ pr, tx: settled.transaction, payer: settled.payer ?? "", amountMicro: BigInt(result.paymentRequirements.amount), network: settled.network });
+          await opts.onPaid({ pr, tx: settled.transaction, payer: settled.payer ?? "", amountMicro: BigInt(result.paymentRequirements.amount), network: settled.network, acceptedWhileOpen: true });
           recorded = true;
         } catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 500 * (attempt + 1))); }
       }

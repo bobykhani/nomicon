@@ -18,7 +18,8 @@ export interface PullInfo {
   createdAt: number;
 }
 
-export interface PullCommit { sha: string; signedOff: boolean; authorId?: number; committerId?: number }
+/** `verified`: the platform verified the commit's signature as belonging to `authorId` (Law 1); an unverified author name is anyone's to write. */
+export interface PullCommit { sha: string; signedOff: boolean; authorId?: number; committerId?: number; verified?: boolean }
 
 export interface IssueComment { id: number; account: number; login: string; body: string; createdAt: number }
 
@@ -95,4 +96,6 @@ export interface PaymentNotice {
   payer: string;
   amountMicro: bigint;
   network: string;
+  /** True when the agent accepted the payment for settlement while the quote was open (Law 5: then it is on time whatever its block timestamp). */
+  acceptedWhileOpen?: boolean;
 }

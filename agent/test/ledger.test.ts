@@ -99,9 +99,12 @@ describe("key rotation", () => {
     const a = key(), b = key();
     const wait = ROTATION_WAIT_DAYS * 86400;
     const base = [signed(a, { id: 1, at: 100, type: "genesis" })];
-    const ok = [...base, signed(b, { id: 2, at: 100 + wait, type: "key_rotation", new_public_key: b.publicKeyPem(), commit: "c", announced_at: 100, lost: true, reason: "lost", by: "1" })];
+    const ok = [...base, signed(b, { id: 2, at: 100 + wait, type: "key_rotation", new_public_key: b.publicKeyPem(), tx: "0xabc", announced_at: 100, lost: true, reason: "lost", by: "1" })];
     expect(verifyLedgerSignatures(ok, a.publicKeyPem())).toEqual([]);
-    const early = [...base, signed(b, { id: 2, at: 99 + wait, type: "key_rotation", new_public_key: b.publicKeyPem(), commit: "c", announced_at: 100, lost: true, reason: "lost", by: "1" })];
+    const early = [...base, signed(b, { id: 2, at: 99 + wait, type: "key_rotation", new_public_key: b.publicKeyPem(), tx: "0xabc", announced_at: 100, lost: true, reason: "lost", by: "1" })];
+    const c = key();
+    const contrary = [...base, signed(a, { id: 2, at: 150, type: "key_rotation", new_public_key: c.publicKeyPem(), commit: "k", reason: "planned", by: "1" }), signed(b, { id: 3, at: 100 + wait, type: "key_rotation", new_public_key: b.publicKeyPem(), tx: "0xabc", announced_at: 100, lost: true, reason: "lost", by: "1" })];
+    expect(verifyLedgerSignatures(contrary, a.publicKeyPem()).map((f) => f.problem)).toEqual([expect.stringContaining("does not stand")]);
     expect(verifyLedgerSignatures(early, a.publicKeyPem()).map((f) => f.problem)).toEqual([expect.stringContaining("sooner than")]);
   });
 });

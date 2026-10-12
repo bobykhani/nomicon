@@ -9,7 +9,7 @@
     "effective": { "type": "string", "format": "date" },
     "vote": {
       "type": "object",
-      "required": ["world", "laws", "mechanism", "yes", "no", "author_may_vote", "rules_snapshot_at_open", "votes_owed_per_submission"],
+      "required": ["world", "laws", "mechanism", "yes", "no", "author_may_vote", "rules_snapshot_at_open", "votes_owed_per_submission", "reject_quorum_no_voters"],
       "properties": {
         "world": { "$ref": "#/$defs/procedure" },
         "laws": {
@@ -29,6 +29,7 @@
         "no": { "const": "CHANGES_REQUESTED" },
         "author_may_vote": { "const": false },
         "votes_owed_per_submission": { "type": "integer", "minimum": 0 },
+        "reject_quorum_no_voters": { "type": "integer", "minimum": 1 },
         "rules_snapshot_at_open": { "const": true }
       }
     },
@@ -158,7 +159,7 @@
         "quorum_percent_of_weighted_accounts": { "type": "number", "minimum": 0, "maximum": 100 },
         "quorum_square_root": { "type": "boolean" },
         "majority": { "enum": ["simple_weight", "two_thirds_weight"] },
-        "tie": { "const": "expire" }
+        "tie": { "enum": ["expire", "reject"] }
       }
     }
   }

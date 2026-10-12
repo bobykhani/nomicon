@@ -92,14 +92,22 @@ export class GitHubAdapter implements GitHubPort {
     const tree = await this.octokit.git.getTree({ owner: this.owner, repo: this.repo, tree_sha: pr.data.head.sha, recursive: "1" });
     const modes = new Map<string, { mode: string; size: number }>();
     for (const t of tree.data.tree) if (t.path) modes.set(t.path, { mode: t.mode ?? "100644", size: t.size ?? 0 });
-    const diffResp = await this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: n, mediaType: { format: "diff" } });
-    const bytes = bytesChangedByFile(diffResp.data as unknown as string);
+    // GitHub will not render a diff above its size limits (406/422); a 1 MB text file Law 6 allows can exceed them.
+    // Then every added or changed file is charged at its full size, the conservative reading of Law 5.
+    let bytes: Map<string, number> | null = null;
+    try {
+      const diffResp = await this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: n, mediaType: { format: "diff" } });
+      bytes = bytesChangedByFile(diffResp.data as unknown as string);
+    } catch (e) {
+      const status = (e as { status?: number }).status;
+      if (status !== 406 && status !== 422) throw e;
+    }
     return files.map((f) => {
       const m = modes.get(f.filename);
       const entry: ChangedFile = {
         path: f.filename,
         status: f.status as ChangedFile["status"],
-        bytesChanged: bytes.get(f.filename) ?? 0,
+        bytesChanged: bytes ? (bytes.get(f.filename) ?? 0) : (f.status === "removed" ? 0 : (m?.size ?? 0)),
         sizeAfter: f.status === "removed" ? 0 : (m?.size ?? 0),
       };
       if (m?.mode) entry.mode = m.mode;
@@ -111,7 +119,7 @@ export class GitHubAdapter implements GitHubPort {
   async listCommits(n: number): Promise<PullCommit[]> {
     const commits = await this.octokit.paginate(this.octokit.pulls.listCommits, { owner: this.owner, repo: this.repo, pull_number: n, per_page: 100 });
     return commits.map((c) => {
-      const out: PullCommit = { sha: c.sha, signedOff: SIGNOFF.test(c.commit.message) };
+      const out: PullCommit = { sha: c.sha, signedOff: SIGNOFF.test(c.commit.message), verified: c.commit.verification?.verified === true };
       if (c.author?.id) out.authorId = c.author.id;
       if (c.committer?.id) out.committerId = c.committer.id;
       return out;
@@ -123,7 +131,8 @@ export class GitHubAdapter implements GitHubPort {
     const first = await this.conditional(`reviews:${n}`, (headers) => this.octokit.pulls.listReviews({ ...base, page: 1, headers }));
     type R = Awaited<ReturnType<Octokit["pulls"]["listReviews"]>>["data"];
     let reviews = first.data as R;
-    if (!first.cached && reviews.length === 100) reviews = reviews.concat(await this.octokit.paginate(this.octokit.pulls.listReviews, { ...base, page: 2 }));
+    // A full first page may hide later pages behind an unchanged ETag (reviews are listed oldest first), so page on regardless.
+    if (reviews.length === 100) reviews = reviews.concat(await this.octokit.paginate(this.octokit.pulls.listReviews, { ...base, page: 2 }));
     return reviews.map((r) => ({
       reviewId: r.id, account: r.user?.id ?? 0, login: r.user?.login ?? "",
       state: r.state as Review["state"],
@@ -199,7 +208,7 @@ export class GitHubAdapter implements GitHubPort {
     const first = await this.conditional(`comments:${issue}`, (headers) => this.octokit.issues.listComments({ ...base, page: 1, headers }));
     type C = Awaited<ReturnType<Octokit["issues"]["listComments"]>>["data"];
     let comments = first.data as C;
-    if (!first.cached && comments.length === 100) comments = comments.concat(await this.octokit.paginate(this.octokit.issues.listComments, { ...base, page: 2 }));
+    if (comments.length === 100) comments = comments.concat(await this.octokit.paginate(this.octokit.issues.listComments, { ...base, page: 2 }));
     return comments.map((c) => ({ id: c.id, account: c.user?.id ?? 0, login: c.user?.login ?? "", body: c.body ?? "", createdAt: Math.floor(Date.parse(c.created_at) / 1000) }));
   }
 

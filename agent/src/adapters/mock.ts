@@ -42,7 +42,7 @@ export class FakeGitHub implements GitHubPort {
     const changed: ChangedFile[] = Object.entries(files).map(([path, content]) => ({ path, status: this.repoFiles[path] !== undefined ? "modified" : "added", mode: "100644", bytesChanged: Buffer.byteLength(content), sizeAfter: Buffer.byteLength(content) }));
     const pull: FakePull = {
       number: n, title: `pr ${n}`, body: "", headSha: head, baseSha: "base", author, state: "open", draft: false, merged: false, createdAt: this.clock.now(),
-      files: changed, contents: files, commits: [{ sha: head, signedOff: true, authorId: author.id }], reviews: [], comments: [], ...over,
+      files: changed, contents: files, commits: [{ sha: head, signedOff: true, authorId: author.id, verified: true }], reviews: [], comments: [], ...over,
     };
     this.pulls.set(n, pull);
     return pull;
@@ -50,6 +50,12 @@ export class FakeGitHub implements GitHubPort {
   review(pr: number, account: number, state: Review["state"], at = this.clock.now()): void {
     const p = this.pulls.get(pr)!;
     p.reviews.push({ reviewId: pr * 1000 + p.reviews.length + 1, account, login: `u${account}`, state, submittedAt: at });
+  }
+  /** A collaborator dismisses an account's latest review on the platform; the ledger's record of it must still count (Law 2). */
+  dismissReview(pr: number, account: number): void {
+    const p = this.pulls.get(pr)!;
+    const mine = p.reviews.filter((r) => r.account === account);
+    if (mine.length) mine[mine.length - 1]!.state = "DISMISSED" as Review["state"];
   }
   push(pr: number): void { const p = this.pulls.get(pr)!; p.headSha = createHash("sha1").update(p.headSha + "push").digest("hex"); }
 

@@ -9,10 +9,10 @@ import { adjustBase, quote as computeQuote, throughputTarget } from "./fee.js";
 import { intake } from "./intake.js";
 import { Ledger, type LedgerEvent } from "./ledger.js";
 import { parseLaws, LawsError, type Laws, type LoadedLaws } from "./laws.js";
-import { phaseOf } from "./phases.js";
+import { phaseOf, type Phase } from "./phases.js";
 import type { ChainPort, Clock, GitHubPort, PaymentNotice, PriceOracle, PullInfo, ScreenPort } from "./ports.js";
 import { fold, serializeState, type State } from "./state.js";
-import { tally } from "./tally.js";
+import { tally, type Review } from "./tally.js";
 import type { OpenQuote } from "./pay.js";
 import { parseHeader, buildIndex, type Header, type QuestionsIndex } from "./questions.js";
 import { mentionTargets } from "./notify.js";
@@ -32,6 +32,8 @@ export interface RuntimeDeps {
   log?: (msg: string) => void;
   /** Law 12 duties. Optional so the rules engine can run without them. */
   notifier?: Notifier;
+  /** Shown on every quote once the owner is registered for GST/HST (Law 5). */
+  tax?: { included: string; registration: string };
 }
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -44,6 +46,32 @@ export class Runtime {
   constructor(private d: RuntimeDeps) { this.log = d.log ?? (() => {}); }
 
   get events(): LedgerEvent[] { return this.d.ledger.events; }
+
+  private index = { length: 0, byPr: new Map<number, LedgerEvent[]>() };
+  /** The events of one pull request, from an index that grows with the ledger, so a phase costs the events of that pull request, not of all. */
+  private eventsOf(pr: number): LedgerEvent[] {
+    const ev = this.events;
+    if (this.index.length > ev.length) this.index = { length: 0, byPr: new Map() };
+    for (let i = this.index.length; i < ev.length; i++) {
+      const e = ev[i]!, p = e["pr"];
+      if (p === undefined || p === null) continue;
+      const k = Number(p), arr = this.index.byPr.get(k);
+      if (arr) arr.push(e); else this.index.byPr.set(k, [e]);
+    }
+    this.index.length = ev.length;
+    return this.index.byPr.get(pr) ?? [];
+  }
+  private phase(pr: number): Phase { return phaseOf(pr, this.eventsOf(pr)); }
+
+  private memo = new Map<string, { length: number; now: number; value: unknown }>();
+  /** A per-tick memo: valid while neither the clock nor the ledger has moved. */
+  private memoized<T>(key: string, now: number, compute: () => T): T {
+    const m = this.memo.get(key);
+    if (m && m.length === this.events.length && m.now === now) return m.value as T;
+    const value = compute();
+    this.memo.set(key, { length: this.events.length, now, value });
+    return value;
+  }
 
   /**
    * Article 8 and Law 3: the rules in force are the latest laws_snapshot whose
@@ -82,7 +110,16 @@ export class Runtime {
     throw new Error("no compliant laws.json has ever been loaded");
   }
 
+  private stateCache: { now: number; length: number; state: State } | null = null;
+  /** The state folded from the ledger at `now`, computed once per tick and per append. */
   state(now = this.d.clock.now()): State {
+    const c = this.stateCache;
+    if (c && c.now === now && c.length === this.events.length) return c.state;
+    const state = this.stateUncached(now);
+    this.stateCache = { now, length: this.events.length, state };
+    return state;
+  }
+  private stateUncached(now: number): State {
     if (!this.laws) throw new Error("laws not loaded");
     return fold(this.events, now, this.laws.laws);
   }
@@ -95,7 +132,7 @@ export class Runtime {
 
   /** Current open quote for the payment endpoint. */
   quoteFor(pr: number): OpenQuote | null {
-    const p = phaseOf(pr, this.events);
+    const p = this.phase(pr);
     if (p.kind !== "quoted") return null;
     const q = p.quote;
     return { pr, feeMicro: BigInt(String(q["fee_micro"])), destination: String(q["destination"]), expires: Number(q["expires"]) };
@@ -104,7 +141,7 @@ export class Runtime {
   /** Called by the payment endpoint after settlement. */
   async onPaid(n: PaymentNotice): Promise<void> {
     const now = this.d.clock.now();
-    const p = phaseOf(n.pr, this.events);
+    const p = this.phase(n.pr);
     if (p.kind !== "quoted") {
       this.log(`payment for pr ${n.pr} arrived in phase ${p.kind}; recorded as unmatched`);
       this.d.ledger.append(now, "payment", { pr: n.pr, tx: n.tx, from: n.payer, amount_micro: n.amountMicro, matched: false });
@@ -120,7 +157,9 @@ export class Runtime {
     }
     if (!info) this.log(`pr ${n.pr}: transaction ${n.tx} not visible on chain yet; arrival taken as the agent's clock`);
     const arrival = info?.blockTime ?? now;
-    const matched = n.amountMicro >= quoted && arrival <= Number(p.quote["expires"]);
+    // Law 5: a payment the agent accepted while the quote was open is on time whatever its block timestamp;
+    // one recorded later is on time if its block preceded the quote's expiry.
+    const matched = n.amountMicro >= quoted && (n.acceptedWhileOpen === true || arrival <= Number(p.quote["expires"]));
     const cad = await this.d.oracle.usdcToCad();
     const amountCad = ((Number(n.amountMicro) / 1_000_000) * Number(cad)).toFixed(2);
     this.d.ledger.append(now, "payment", {
@@ -158,22 +197,30 @@ export class Runtime {
     };
     pulls.sort((a, b) => { const x = key(a), y = key(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });
     const openNumbers = new Set(pulls.map((p) => p.number));
-    for (const pr of pulls) await this.handlePull(pr, laws, now);
-    await this.applyOwnerDecisions(laws, now, openNumbers);
+    // One failing pull request must not stop the others, the owner's decisions, the sweeps or the publish.
+    for (const pr of pulls) {
+      try { await this.handlePull(pr, laws, now); }
+      catch (e) { this.log(`pr ${pr.number}: ${(e as Error).message}; skipped this tick`); if (isRateLimited(e)) { this.log("API rate limit reached; the rest of this tick waits"); break; } }
+    }
+    await this.guard("owner decisions", () => this.applyOwnerDecisions(laws, now, openNumbers));
     // A pull request closed or drafted while its vote was open is a withdrawal (Law 8).
-    for (const v of this.state(now).open_votes) if (!openNumbers.has(v.pr)) await this.withdraw(v.pr, laws, now, "closed after the vote opened");
-    await this.reconcileClosed(openNumbers, laws, now);
+    await this.guard("withdrawals", async () => { for (const v of this.state(now).open_votes) if (!openNumbers.has(v.pr)) await this.withdraw(v.pr, laws, now, "closed after the vote opened"); });
+    await this.guard("closed before open", () => this.sweepClosed(openNumbers, laws, now));
+    await this.guard("merge reconciliation", () => this.reconcileClosed(openNumbers, laws, now));
+    await this.guard("laws snapshots", () => this.reconcileLawsSnapshots(now, laws));
+    await this.guard("bootstrap end", () => this.sweepBootstrapEnd(laws, now));
     if (this.d.notifier) {
-      await this.d.notifier.pollRegistrations(now);
-      await this.d.notifier.pollWatchers(now, laws, this.state(now));
-      await this.d.notifier.maybeDigest(now, laws, this.state(now), this.events);
-      await this.d.notifier.deliver(now, laws, this.state(now), this.events);
+      const n = this.d.notifier;
+      await this.guard("doorbell registrations", () => n.pollRegistrations(now));
+      await this.guard("watchers", () => n.pollWatchers(now, laws, this.state(now)));
+      await this.guard("digest", () => n.maybeDigest(now, laws, this.state(now), this.events));
+      await this.guard("doorbell deliveries", () => n.deliver(now, laws, this.state(now), this.events));
     }
     await this.publish(now);
   }
 
   private async handlePull(pr: PullInfo, laws: Laws, now: number): Promise<void> {
-    const p = phaseOf(pr.number, this.events);
+    const p = this.phase(pr.number);
     const state = this.state(now);
     switch (p.kind) {
       case "new": return this.intakeAndScreen(pr, laws, now, state);
@@ -197,7 +244,7 @@ export class Runtime {
       }
       case "voting": return this.maybeClose(pr, p.open, p.quote, laws, now, state);
       case "await_owner":
-        if (now - p.close.at >= laws.bootstrap.owner_action_deadline_days * 86400) await this.expire(pr.number, p.quote, laws, now, "the owner did not act within the bootstrap deadline");
+        if (now - p.close.at >= laws.bootstrap.owner_action_deadline_days * 86400) await this.expire(pr.number, p.quote, laws, now, "the owner did not act within the bootstrap deadline", OWNER_CAUSED_HOLD_DAYS);
         return;
       case "confirmed": return this.doMerge(pr.number, String(p.open["head"]), p.quote, laws, now, pr.author);
       case "merging": return this.doMerge(pr.number, String(p.open["head"]), p.quote, laws, now, pr.author);
@@ -214,7 +261,10 @@ export class Runtime {
       return;
     }
     // Law 10: an earlier pass on this exact head, or an owner release, means no new screening is needed.
-    const released = this.events.some((e) => e.type === "hold_resolved" && e["decision"] === "release" && Number(e["pr"]) === pr.number);
+    // A release covers the head the owner looked at, not whatever is pushed after it (Article 4, Law 10).
+    const lastHold = [...this.events].reverse().find((e) => e.type === "screen_hold" && Number(e["pr"]) === pr.number);
+    const released = lastHold !== undefined && String(lastHold["head"]) === pr.headSha
+      && this.events.some((e) => e.type === "hold_resolved" && e["decision"] === "release" && Number(e["pr"]) === pr.number && e.id > lastHold.id);
     const passedBefore = this.events.some((e) => e.type === "quote" && Number(e["pr"]) === pr.number && String(e["head"]) === pr.headSha);
     const screening: "model" | "reused" | "released" = released ? "released" : passedBefore ? "reused" : "model";
     // Law 10: each account may have only so many unpaid submissions screened per day. Checked from the ledger
@@ -251,8 +301,8 @@ export class Runtime {
     // Law 6: the World grows by at most so many kilobytes in any 30 days; beyond that a submission waits for older merges to age out.
     const growthKb = laws.content.max_world_growth_kb_per_month;
     if (growthKb > 0 && result.layer === "world") {
-      const incoming = files.filter((f) => f.status !== "removed").reduce((a, f) => a + f.sizeAfter, 0);
-      const used = this.worldGrowthLast30Days(now);
+      const incoming = files.reduce((a, f) => a + f.bytesChanged, 0);
+      const used = this.worldGrowthLast30Days(now) + this.worldBytesInFlight(now);
       if (used + incoming > growthKb * 1024) {
         await this.deferScreening(pr, now, "growth", `the World has grown by ${Math.ceil(used / 1024)} kB in the last 30 days and the Laws allow ${growthKb} kB (Law 6); merges older than 30 days stop counting day by day, and this submission proceeds when there is room`);
         return;
@@ -288,7 +338,7 @@ export class Runtime {
     const openPaid = new Set<number>();
     for (const e of this.events) {
       if (e.type !== "quote" || Number(e["account"]) !== pr.author.id || Number(e["pr"]) === pr.number) continue;
-      const k = phaseOf(Number(e["pr"]), this.events).kind;
+      const k = this.phase(Number(e["pr"])).kind;
       if (k === "paid" || k === "voting" || k === "await_owner" || k === "confirmed") openPaid.add(Number(e["pr"]));
     }
     const q = computeQuote({ layer: result.layer, bytesChanged: result.bytesChanged, openPaidByAccount: openPaid.size, baseMicro: state.fee.base_micro }, laws);
@@ -301,6 +351,8 @@ export class Runtime {
       pr: pr.number, head: pr.headSha, account: pr.author.id, login: pr.author.login, layer: result.layer, network,
       fee_micro: held ? 0n : q.feeMicro, base_micro: q.baseMicro, multiplier: q.multiplier, concurrency: q.concurrency, size_kb: q.sizeKbCharged,
       weight_micro: q.weightMicro, terms_commit: terms, destination: state.fee.destination, expires, held_fee_pr: held?.pr ?? null, screening,
+      bytes: files.reduce((a, f) => a + f.bytesChanged, 0), queue_ahead: this.paidWaiting(now).length,
+      tax: this.d.tax?.included ?? "none", tax_registration: this.d.tax?.registration ?? "none",
       ...(screening === "model" ? { screened_bytes: screenedBytes } : {}),
     });
     if (held) {
@@ -312,15 +364,17 @@ export class Runtime {
   }
 
   /** Model screenings in the last day whose submission is unpaid: per account, in total, and the newcomers' share; `known` holds accounts that have ever paid. */
-  private unpaidScreening(now: number, state: State): { byAccount: Map<number, { count: number; bytes: number }>; total: number; newcomers: number; known: Set<number> } {
+  private unpaidScreening(now: number, state: State): { byAccount: Map<number, { count: number; bytes: number }>; total: number; newcomers: number; known: Set<number> } { return this.memoized("unpaidScreening", now, () => this.unpaidScreeningUncached(now, state)); }
+  private unpaidScreeningUncached(now: number, state: State): { byAccount: Map<number, { count: number; bytes: number }>; total: number; newcomers: number; known: Set<number> } {
     const paid = new Set<number>(), known = new Set<number>();
-    for (const e of this.events) if (e.type === "payment" && e["matched"] !== false) { paid.add(Number(e["pr"])); const a = state.pr_account[Number(e["pr"])]; if (a !== undefined) known.add(a); }
+    for (const e of this.events) if (e.type === "payment" && e["matched"] !== false) paid.add(Number(e["pr"]));
+    for (const [id, w] of Object.entries(state.weights)) if (w.mature_micro > 0n) known.add(Number(id)); // Law 10: the reserved half is for members
     const byAccount = new Map<number, { count: number; bytes: number }>();
     let total = 0, newcomers = 0;
     for (const e of this.events) {
       if (now - e.at >= 86400 || paid.has(Number(e["pr"]))) continue;
-      if (!(e.type === "screen_hold" || (e.type === "quote" && (e["screening"] ?? "model") === "model"))) continue;
-      const account = Number(e["account"]), bytes = Number(e["screened_bytes"] ?? 0);
+      if (e.type !== "screen_hold" && e.type !== "quote") continue; // every quote counts toward the five; only model screenings cost bytes
+      const account = Number(e["account"]), bytes = e.type === "quote" && (e["screening"] ?? "model") !== "model" ? 0 : Number(e["screened_bytes"] ?? 0);
       const m = byAccount.get(account) ?? { count: 0, bytes: 0 };
       m.count++; m.bytes += bytes; byAccount.set(account, m);
       total += bytes; if (!known.has(account)) newcomers += bytes;
@@ -328,33 +382,61 @@ export class Runtime {
     return { byAccount, total, newcomers, known };
   }
 
-  /** Bytes merged into the World in the last 30 days (Law 6). */
+  /** Bytes merged into the World in the last 30 days (Law 6), counting the bytes each merge added or changed in its diff. */
   private worldGrowthLast30Days(now: number): number {
     let total = 0;
     for (const e of this.events) if (e.type === "merge" && e["layer"] === "world" && now - e.at < 30 * 86400) total += Number(e["bytes"] ?? 0);
     return total;
   }
 
+  /** Bytes of World contributions quoted or paid and not yet decided, reserved against the growth budget (Law 6). */
+  private worldBytesInFlight(now: number): number { return this.memoized("worldBytesInFlight", now, () => this.worldBytesInFlightUncached(now)); }
+  private worldBytesInFlightUncached(now: number): number {
+    let total = 0;
+    const seen = new Set<number>();
+    for (const e of this.events) {
+      if (e.type !== "quote" || e["layer"] !== "world") continue;
+      const pr = Number(e["pr"]);
+      if (seen.has(pr)) continue;
+      seen.add(pr);
+      const p = this.phase(pr);
+      if (p.kind === "quoted" && Number(p.quote["expires"]) < now) continue;
+      if (p.kind === "quoted" || p.kind === "paid" || p.kind === "voting" || p.kind === "await_owner" || p.kind === "confirmed" || p.kind === "merging") total += Number(p.quote["bytes"] ?? 0);
+    }
+    return total;
+  }
+
   /** Reviews by qualified voters in the target lookback, the community's own review capacity (Law 5). */
   private qualifiedVotesInLookback(now: number, laws: Laws): number {
     const since = now - laws.fee.target_lookback_days * 86400;
-    return this.events.filter((e) => e.type === "review" && Number(e["submitted"]) >= since).length;
+    // Only contributions whose close reached quorum count: a bloc reviewing everything demonstrates no capacity until something closes properly.
+    const reached = new Set<number>();
+    for (const e of this.events) if (e.type === "vote_close" && e.at >= since && Number(e["yes_voters"]) >= Number(e["quorum"])) reached.add(Number(e["pr"]));
+    const votes = new Set<string>();
+    for (const e of this.events) if (e.type === "review" && Number(e["submitted"]) >= since && reached.has(Number(e["pr"]))) votes.add(`${e["account"]}:${e["pr"]}`);
+    return votes.size; // one vote per voter per contribution, however often the review changed
+  }
+
+  private mergesInLookback(now: number, laws: Laws): number {
+    const since = now - laws.fee.target_lookback_days * 86400;
+    return this.events.filter((e) => e.type === "merge" && e.at >= since).length;
   }
 
   /** Law 2: how many votes may be open at once, from the throughput target. */
   private maxOpenVotes(now: number, laws: Laws): number {
-    return Math.max(laws.fee.max_open_votes_min, laws.fee.max_open_votes_per_target * throughputTarget(this.qualifiedVotesInLookback(now, laws), laws));
+    return Math.max(laws.fee.max_open_votes_min, laws.fee.max_open_votes_per_target * throughputTarget(this.qualifiedVotesInLookback(now, laws), this.mergesInLookback(now, laws), laws));
   }
 
   /** Paid submissions whose vote has not opened, in order of payment. */
-  private paidWaiting(now: number): number[] {
+  private paidWaiting(now: number): number[] { return this.memoized("paidWaiting", now, () => this.paidWaitingUncached(now)); }
+  private paidWaitingUncached(now: number): number[] {
     const seen = new Set<number>(), out: number[] = [];
     for (const e of this.events) {
       if (e.type !== "payment" || e["matched"] === false) continue;
       const pr = Number(e["pr"]);
       if (seen.has(pr)) continue;
       seen.add(pr);
-      if (phaseOf(pr, this.events).kind === "paid") out.push(pr);
+      if (this.phase(pr).kind === "paid") out.push(pr);
     }
     return out;
   }
@@ -372,10 +454,11 @@ export class Runtime {
     const k = laws.vote.votes_owed_per_submission;
     const w = state.weights[String(account)];
     if (!k || !w || w.mature_micro <= 0n) return { owed: 0, available: [] };
-    let lastQuoteAt = 0;
-    for (const e of this.events) if (e.type === "quote" && Number(e["account"]) === account) lastQuoteAt = e.at;
+    // Law 13: counted from the account's previous payment, so a lapsed quote does not reset the debt.
+    let lastPaidAt = 0;
+    for (const e of this.events) if (e.type === "payment" && e["matched"] !== false && state.pr_account[Number(e["pr"])] === account) lastPaidAt = e.at;
     const voted = new Set<number>();
-    for (const e of this.events) if (e.type === "review" && Number(e["account"]) === account && Number(e["submitted"]) > lastQuoteAt) voted.add(Number(e["pr"]));
+    for (const e of this.events) if (e.type === "review" && Number(e["account"]) === account && Number(e["submitted"]) > lastPaidAt) voted.add(Number(e["pr"]));
     const available = state.open_votes
       .filter((v) => v.qualified.includes(account) && !v.authors.includes(account) && !voted.has(v.pr))
       .map((v) => ({ pr: v.pr, closes: v.closes }))
@@ -394,7 +477,9 @@ export class Runtime {
     if (pr.headSha !== String(quote["head"])) { await this.withdraw(pr.number, laws, now, "head changed before the vote opened", quote); return; }
     const commits = await this.d.github.listCommits(pr.number);
     const authors = new Set<number>([pr.author.id]);
-    for (const c of commits) { if (c.authorId) authors.add(c.authorId); if (c.committerId) authors.add(c.committerId); }
+    // Law 1: only a commit the platform verified as signed by an account makes that account an author; names on commits are anyone's to write.
+    for (const c of commits) if (c.verified && c.authorId) authors.add(c.authorId);
+    const commitRecord = commits.map((c) => ({ sha: c.sha, author: c.authorId ?? null, verified: c.verified === true }));
     const qualified = Object.entries(state.weights).filter(([id, w]) => w.mature_micro > 0n && !authors.has(Number(id))).map(([id]) => Number(id)).sort((a, b) => a - b);
     const layer = quote["layer"] as "world" | "laws";
     const proc = layer === "laws" ? laws.vote.laws : laws.vote.world;
@@ -402,7 +487,7 @@ export class Runtime {
     const closes = immediate ? now : now + proc.window_hours * 3600;
     this.d.ledger.append(now, "vote_open", {
       pr: pr.number, head: pr.headSha, layer, opened: now, closes, laws_hash: this.laws!.hash,
-      qualified, authors: [...authors].sort((a, b) => a - b), weighted_accounts: state.weighted_accounts,
+      qualified, authors: [...authors].sort((a, b) => a - b), commits: commitRecord, weighted_accounts: state.weighted_accounts,
     });
     await this.d.github.comment(pr.number, "```nomicon-vote\n" + [`pr: ${pr.number}`, `head: ${pr.headSha}`, `layer: ${layer}`, `opened: ${iso(now)}`, `closes: ${iso(closes)}`, `laws: ${this.laws!.hash}`, `qualified_voters: ${qualified.length}`].join("\n") + "\n```\nQualified voters vote by reviewing this pull request: Approve is yes, Request changes is no. Do not push to it.");
   }
@@ -421,7 +506,9 @@ export class Runtime {
     const matureAtClose = new Map<number, bigint>();
     for (const [id, w] of Object.entries(atClose.weights)) matureAtClose.set(Number(id), w.mature_micro);
     const base = {
-      layer: open["layer"] as "world" | "laws", openedAt: Number(open["opened"]), closesAt, qualified, authors, reviews,
+      layer: open["layer"] as "world" | "laws", openedAt: Number(open["opened"]), closesAt, qualified, authors,
+      // Law 2: the vote is what the ledger recorded while the window was open; a later dismissal on the platform is ignored.
+      reviews: this.recordedReviews(pr.number),
       matureAtClose, weightedAccountsAtOpen: Number(open["weighted_accounts"]),
     };
     const result = tally(base, lawsAtOpen);
@@ -440,13 +527,67 @@ export class Runtime {
     await this.expire(pr.number, quote, laws, now, summary + (result.tie ? "" : " Quorum was not reached."));
   }
 
+  /** Run one tick duty, logging a failure instead of abandoning the duties after it. */
+  private async guard(what: string, fn: () => Promise<void>): Promise<void> {
+    try { await fn(); } catch (e) { this.log(`${what} failed this tick: ${(e as Error).message}`); }
+  }
+
+  /**
+   * Submissions that left the open list before their vote opened: quoted, paid, or awaiting the owner (Law 8).
+   * A paid one is a withdrawal with the fee held, since no vote could have been cast; without this they would
+   * hold queue places and concurrency forever.
+   */
+  private async sweepClosed(openNumbers: Set<number>, laws: Laws, now: number): Promise<void> {
+    const seen = new Set<number>();
+    for (const e of this.events) {
+      if (e.type !== "quote") continue;
+      const pr = Number(e["pr"]);
+      if (seen.has(pr) || openNumbers.has(pr)) continue;
+      seen.add(pr);
+      const p = this.phase(pr);
+      if (p.kind !== "quoted" && p.kind !== "paid" && p.kind !== "await_owner") continue;
+      let info: PullInfo;
+      try { info = await this.d.github.getPull(pr); } catch (err) { this.log(`pr ${pr}: cannot read the closed pull request: ${(err as Error).message}`); continue; }
+      if (info.state === "open") continue;
+      if (info.merged) { this.log(`pr ${pr} was merged outside the rules while ${p.kind}; left for the owner`); continue; }
+      if (p.kind === "quoted") { this.d.ledger.append(now, "quote_lapsed", { pr, reason: "closed unpaid" }); continue; }
+      await this.withdraw(pr, laws, now, p.kind === "paid" ? "closed before the vote opened" : "closed while awaiting the owner", p.quote);
+    }
+  }
+
+  /** Article 3: when bootstrap ends, every contribution still awaiting the owner's action is treated as expired, with the fee held for the owner-caused term. */
+  private async sweepBootstrapEnd(laws: Laws, now: number): Promise<void> {
+    if (this.state(now).bootstrap.active) return;
+    const seen = new Set<number>();
+    for (const e of this.events) {
+      if (e.type !== "vote_close" || e["result"] !== "await_owner") continue;
+      const pr = Number(e["pr"]);
+      if (seen.has(pr)) continue;
+      seen.add(pr);
+      const p = this.phase(pr);
+      if (p.kind === "await_owner") await this.expire(pr, p.quote, laws, now, "bootstrap ended with no owner decision (Article 3)", OWNER_CAUSED_HOLD_DAYS);
+    }
+  }
+
+  /** A Laws-layer merge whose snapshot could not be read at merge time gets it on a later tick, so no Laws change is ever lost. */
+  private async reconcileLawsSnapshots(now: number, laws: Laws): Promise<void> {
+    for (const m of this.events) {
+      if (m.type !== "merge" || m["layer"] !== "laws") continue;
+      const commit = String(m["merge_commit"]);
+      if (this.events.some((e) => e.type === "laws_snapshot" && String(e["merge_commit"]) === commit)) continue;
+      const paths = (m["paths"] as string[] | undefined) ?? [];
+      if (!paths.includes("laws.json") && !paths.includes("laws.schema.json")) continue;
+      await this.snapshotLaws(Number(m["pr"]), commit, m.at, laws);
+    }
+  }
+
   /** Pull requests that left the open list while the ledger still expects a merge: a crash between GitHub's merge and the ledger write, or a close by the author in that moment. */
   private async reconcileClosed(openNumbers: Set<number>, laws: Laws, now: number): Promise<void> {
     const candidates = new Set<number>();
     for (const e of this.events) if (e.type === "vote_close" || e.type === "owner_confirm") candidates.add(Number(e["pr"]));
     for (const pr of candidates) {
       if (openNumbers.has(pr)) continue;
-      const p = phaseOf(pr, this.events);
+      const p = this.phase(pr);
       if (p.kind !== "merging" && p.kind !== "confirmed") continue;
       let info: PullInfo;
       try { info = await this.d.github.getPull(pr); } catch (e) { this.log(`pr ${pr}: cannot read the closed pull request: ${(e as Error).message}`); continue; }
@@ -455,16 +596,33 @@ export class Runtime {
     }
   }
 
-  /** Record every counting review in the ledger so replay needs nothing from the platform (Article 11). */
+  /** The reviews the ledger recorded for a pull request, in order, as tally input. */
+  private recordedReviews(pr: number): Array<{ reviewId: number; account: number; login: string; state: Review["state"]; submittedAt: number }> {
+    return this.events.filter((e) => e.type === "review" && Number(e["pr"]) === pr).map((e) => ({
+      reviewId: Number(e["review_id"]), account: Number(e["account"]), login: String(e["login"]), state: String(e["state"]) as Review["state"], submittedAt: Number(e["submitted"]),
+    }));
+  }
+
+  /**
+   * Record each qualified voter's latest counting review when it changes, so replay needs nothing from the
+   * platform (Article 11) and a voter changing its mind a thousand times writes a bounded number of events.
+   * Returns how many accounts have a counting review.
+   */
   private recordReviews(pr: number, reviews: Array<{ reviewId: number; account: number; login: string; state: string; submittedAt: number }>, qualified: Set<number>, opened: number, closesAt: number, now: number): number {
-    let counted = 0;
+    const latest = new Map<number, (typeof reviews)[number]>();
     for (const r of reviews) {
       if ((r.state !== "APPROVED" && r.state !== "CHANGES_REQUESTED") || !qualified.has(r.account) || r.submittedAt <= opened || r.submittedAt > closesAt) continue;
-      counted++;
-      if (this.events.some((e) => e.type === "review" && Number(e["review_id"]) === r.reviewId)) continue;
+      const prev = latest.get(r.account);
+      if (!prev || r.submittedAt > prev.submittedAt || (r.submittedAt === prev.submittedAt && r.reviewId > prev.reviewId)) latest.set(r.account, r);
+    }
+    for (const r of latest.values()) {
+      const mine = this.events.filter((e) => e.type === "review" && Number(e["pr"]) === pr && Number(e["account"]) === r.account);
+      const last = mine[mine.length - 1];
+      if (last && Number(last["review_id"]) === r.reviewId) continue;
+      if (mine.length >= MAX_RECORDED_REVIEWS_PER_VOTER && now < closesAt) continue; // further changes are recorded at close only
       this.d.ledger.append(now, "review", { pr, account: r.account, login: r.login, review_id: r.reviewId, state: r.state, submitted: r.submittedAt });
     }
-    return counted;
+    return latest.size;
   }
 
   private async doMerge(pr: number, head: string, quote: LedgerEvent, laws: Laws, now: number, author: { id: number; login: string }, note = ""): Promise<void> {
@@ -480,6 +638,17 @@ export class Runtime {
       } catch (e) { this.log(`pr ${pr}: could not re-check intake at close, retrying next tick: ${(e as Error).message}`); return; }
       if (!again.ok) { await this.expire(pr, quote, laws, now, `no longer passes intake against the current main: ${again.reasons.join("; ")}.`); return; }
     }
+    // Law 2.6: a merge that would exceed the growth budget waits, in order of close, until the budget allows it.
+    if (!alreadyMerged && quote["layer"] === "world" && laws.content.max_world_growth_kb_per_month > 0) {
+      const incoming = Number(quote["bytes"] ?? 0);
+      if (this.worldGrowthLast30Days(now) + incoming > laws.content.max_world_growth_kb_per_month * 1024) {
+        if (!this.events.some((e) => e.type === "merge_deferred" && Number(e["pr"]) === pr)) {
+          this.d.ledger.append(now, "merge_deferred", { pr, reason: "growth" });
+          await this.d.github.comment(pr, "Passed, and waiting to merge: the World's growth budget for the last 30 days is used (Law 6). This merges automatically, in order of close, as older merges leave the window. The outcome stands.");
+        }
+        return;
+      }
+    }
     const mergeCommit = await this.d.github.merge(pr, head);
     if (!mergeCommit) { await this.expire(pr, quote, laws, now, "could not be merged cleanly at close"); return; }
     // Law 12: record what was merged and any headers, so questions and citations replay from the ledger alone.
@@ -491,14 +660,15 @@ export class Runtime {
       for (const f of files) {
         if (f.status === "removed") continue;
         paths.push(f.path);
-        bytes += f.sizeAfter;
+        bytes += f.bytesChanged;
         if (f.path.startsWith("world/") && f.path.toLowerCase().endsWith(".md")) {
           const h = parseHeader(await this.d.github.readFile(mergeCommit, f.path));
           if (h) headers[f.path] = h;
         }
       }
     } catch (e) { this.log(`could not read merged files of pr ${pr}: ${(e as Error).message}`); }
-    const weight = BigInt(String(quote["weight_micro"]));
+    // Article 6: the owner may publish like anyone, paying the fee, and earns no weight by doing so.
+    const weight = this.state(now).owner_accounts.includes(author.id) ? 0n : BigInt(String(quote["weight_micro"]));
     const mergeEvent = this.d.ledger.append(now, "merge", { pr, head, merge_commit: mergeCommit, weight_micro: weight, account: author.id, login: author.login, layer: quote["layer"], paths, headers, bytes });
     await this.d.github.comment(pr, (note ? note + " " : "") + `Merged as ${mergeCommit}. Weight ${micro(weight)} USDC accrues to the author and matures in ${laws.weight.maturity_days} days.`);
     // Law 12: tell the people this contribution answered or built on.
@@ -509,19 +679,24 @@ export class Runtime {
       try { await this.d.github.comment(pr, lines.join("\n")); } catch (e) { this.log(`mention comment failed on pr ${pr}: ${(e as Error).message}`); }
       for (const t of targets) this.d.ledger.append(now, "notice", { kind: "mention", target: t.account, pr, about: mergeEvent.id, reason: t.reason, ok: true });
     }
-    // Law 3: a change to the Laws takes effect after the delay. Snapshot what was merged.
+    // Law 3: a change to the Laws takes effect after the delay. Snapshot what was merged; a failure here is retried by reconcileLawsSnapshots.
     if (quote["layer"] === "laws") {
-      const [rawLaws, rawSchema] = await Promise.all([this.d.github.readFile(mergeCommit, "laws.json"), this.d.github.readFile(mergeCommit, "laws.schema.json")]);
-      if (sha256(rawLaws) !== this.laws!.hash || sha256(rawSchema) !== this.schemaHash) {
-        const effective = now + laws.vote.laws.effect_delay_days * 86400;
-        this.d.ledger.append(now, "laws_snapshot", { pr, laws_hash: sha256(rawLaws), laws_raw: rawLaws, schema_raw: rawSchema, effective_at: effective, merge_commit: mergeCommit });
-        await this.d.github.comment(pr, `This change to the Laws takes effect at ${iso(effective)} (Law 3). Votes opened before then run under the rules recorded at their open.`);
-      }
+      try { await this.snapshotLaws(pr, mergeCommit, now, laws); }
+      catch (e) { this.log(`pr ${pr}: laws snapshot deferred to a later tick: ${(e as Error).message}`); }
     }
   }
 
-  private async expire(pr: number, quote: LedgerEvent, laws: Laws, now: number, why: string): Promise<void> {
-    const heldUntil = now + laws.fee.expiry_hold_days * 86400;
+  /** Record the Laws merged at `mergeCommit`, effective `effect_delay_days` after the merge, if they differ from the Laws in force. */
+  private async snapshotLaws(pr: number, mergeCommit: string, mergedAt: number, laws: Laws): Promise<void> {
+    const [rawLaws, rawSchema] = await Promise.all([this.d.github.readFile(mergeCommit, "laws.json"), this.d.github.readFile(mergeCommit, "laws.schema.json")]);
+    if (sha256(rawLaws) === this.laws!.hash && sha256(rawSchema) === this.schemaHash) return;
+    const effective = mergedAt + laws.vote.laws.effect_delay_days * 86400;
+    this.d.ledger.append(this.d.clock.now(), "laws_snapshot", { pr, laws_hash: sha256(rawLaws), laws_raw: rawLaws, schema_raw: rawSchema, effective_at: effective, merge_commit: mergeCommit });
+    try { await this.d.github.comment(pr, `This change to the Laws takes effect at ${iso(effective)} (Law 3). Votes opened before then run under the rules recorded at their open.`); } catch { /* the ledger has it */ }
+  }
+
+  private async expire(pr: number, quote: LedgerEvent, laws: Laws, now: number, why: string, holdDays = laws.fee.expiry_hold_days): Promise<void> {
+    const heldUntil = now + holdDays * 86400;
     this.d.ledger.append(now, "expiry", { pr, account: Number(quote["account"]), layer: quote["layer"], fee_micro: BigInt(String(quote["fee_micro"])), held_until: heldUntil, reason: why });
     await this.d.github.comment(pr, `Expired: ${why} The fee is held until ${iso(heldUntil)} for resubmission at the same layer (Law 5).`);
     await this.d.github.close(pr);
@@ -561,7 +736,7 @@ export class Runtime {
         const tallyResult = close ? String(close["tally_result"] ?? close["result"]) : "none";
         // Article 3: a rejection after a passing vote is an expiry for the fee; so is one before any tally.
         if (q && tallyResult !== "reject") {
-          const heldUntil = now + laws.fee.expiry_hold_days * 86400;
+          const heldUntil = now + OWNER_CAUSED_HOLD_DAYS * 86400;
           this.d.ledger.append(now, "expiry", { pr, account: Number(q["account"]), layer: q["layer"], fee_micro: BigInt(String(q["fee_micro"])), held_until: heldUntil, reason: "owner rejection" });
           disposition = "held";
         } else disposition = q ? "forfeit" : "none";
@@ -583,7 +758,9 @@ export class Runtime {
     const lookback = now - laws.fee.lookback_hours * 3600;
     const paid = this.events.filter((e) => e.type === "payment" && e["matched"] !== false && e.at >= lookback).length;
     const qualifiedVotes = this.qualifiedVotesInLookback(now, laws);
-    const r = adjustBase({ baseMicro: state.fee.base_micro, paidSubmissionsInLookback: paid, qualifiedVotesInLookback: qualifiedVotes }, laws);
+    const merges = this.mergesInLookback(now, laws);
+    const queueAboveOpenLimit = this.paidWaiting(now).length > this.maxOpenVotes(now, laws);
+    const r = adjustBase({ baseMicro: state.fee.base_micro, paidSubmissionsInLookback: paid, qualifiedVotesInLookback: qualifiedVotes, mergesInLookback: merges, queueAboveOpenLimit }, laws);
     let anchorTx: string | null = null;
     const head = this.d.ledger.headHash();
     try { anchorTx = await this.d.chain.anchor(head); } catch (e) { this.log(`anchor failed: ${(e as Error).message}`); }
@@ -624,6 +801,17 @@ export class Runtime {
   }
 }
 
+function isRateLimited(e: unknown): boolean {
+  const status = (e as { status?: number }).status, msg = String((e as Error).message ?? "");
+  return status === 429 || (status === 403 && /rate limit/i.test(msg));
+}
+
+/** Law 5: an expiry the owner caused, by inaction or by ending bootstrap, holds the fee this long. */
+const OWNER_CAUSED_HOLD_DAYS = 365;
+
+/** A voter may change its review this many times during a window and have each change recorded; the final state is always recorded at close. */
+const MAX_RECORDED_REVIEWS_PER_VOTER = 10;
+
 export function quoteComment(q: LedgerEvent, laws: Laws, base: string): string {
   const lines = [
     `pr: ${q["pr"]}`, `head: ${q["head"]}`, `layer: ${q["layer"]}`,
@@ -631,8 +819,9 @@ export function quoteComment(q: LedgerEvent, laws: Laws, base: string): string {
     `multiplier: ${q["multiplier"]}`, `concurrency: ${q["concurrency"]}`, `size_kb_charged: ${q["size_kb"]}`,
     `terms_commit: ${q["terms_commit"]}`, `destination: ${q["destination"]}`, `network: ${q["network"] ?? laws.fee.network_caip2}`,
     `pay: ${base.replace(/\/$/, "")}/pay/${q["pr"]}`, `expires: ${iso(Number(q["expires"]))}`,
+    `queue_ahead: ${q["queue_ahead"] ?? 0}`, `tax: ${q["tax"] ?? "none"}`, `tax_registration: ${q["tax_registration"] ?? "none"}`,
   ];
-  return "```nomicon-quote\n" + lines.join("\n") + "\n```\nPay within the validity window with USDC on Base via x402 (see agent/PROTOCOL.md). Paying is acceptance of TERMS.md at the commit shown. Verify the destination against CONSTITUTION.md Article 7 before paying.";
+  return `Paying this quote accepts TERMS.md at commit ${q["terms_commit"]}, with the owner named in NOTICES.md; the fee is not refunded on rejection and is held on expiry as LAWS.md Law 5 says.\n\n` + "```nomicon-quote\n" + lines.join("\n") + "\n```\nPay within the validity window with USDC on Base via x402 (see agent/PROTOCOL.md). Paying is acceptance of TERMS.md at the commit shown. Verify the destination against CONSTITUTION.md Article 7 before paying.";
 }
 
 export function micro(m: bigint): string {

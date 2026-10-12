@@ -8,6 +8,8 @@ import { weightsAt, type Merge } from "./weight.js";
 import type { Question } from "./questions.js";
 
 export interface HeldFee { account: number; layer: "world" | "laws"; micro: bigint; until: number; pr: number }
+/** A held fee applied to a later submission: consumed by that submission's merge or rejection, held again on its expiry (Law 5). */
+export interface HeldFeeInUse extends HeldFee { used_by: number }
 export interface OpenVote { pr: number; head: string; layer: "world" | "laws"; opened: number; closes: number; laws_hash: string; qualified: number[]; authors: number[]; weightedAccountsAtOpen: number }
 
 export interface State {
@@ -20,6 +22,10 @@ export interface State {
   weighted_accounts: number;
   open_votes: OpenVote[];
   held_fees: HeldFee[];
+  /** Held fees applied to submissions still in flight, keyed by the using pull request. */
+  held_in_use: Record<number, HeldFeeInUse>;
+  /** Owner accounts named under Article 6, each effective fourteen days after it was recorded. */
+  pending_owner_accounts: Array<{ account: number; effective_at: number }>;
   deployed_agent: string | null;
   /** Public key signing the ledger now, after any rotation; null until a rotation (then the Constitution's key). */
   ledger_key: string | null;
@@ -45,7 +51,7 @@ export function emptyState(): State {
     version: 2, computed_at: null, head_event: 0,
     bootstrap: { active: false, began: null, ends_by: null },
     fee: { base_micro: 1_000_000n, destination: null, last_adjusted_at: null },
-    weights: {}, weighted_accounts: 0, open_votes: [], held_fees: [], deployed_agent: null, ledger_key: null,
+    weights: {}, weighted_accounts: 0, open_votes: [], held_fees: [], held_in_use: {}, pending_owner_accounts: [], deployed_agent: null, ledger_key: null,
     merges: [], logins: {}, last_vote_at: {}, owner_accounts: [], agent_account: null, barred_until: {}, pr_account: {}, path_author: {}, questions: {}, channels: {},
   };
 }
@@ -64,6 +70,16 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       s.owner_accounts = (e["owner_accounts"] as number[]) ?? [];
       s.agent_account = e["agent_account"] !== undefined ? num(e["agent_account"]) : null;
       break;
+    case "quote": {
+      // Law 5: a quote covered by a held fee takes that fee out of the held set until the submission is decided.
+      const used = e["held_fee_pr"];
+      if (used !== undefined && used !== null) {
+        const acct = num(e["account"]), pr = num(e["pr"]);
+        const i = s.held_fees.findIndex((h) => h.account === acct && h.pr === num(used));
+        if (i >= 0) { const fee = s.held_fees.splice(i, 1)[0]!; s.held_in_use[pr] = { ...fee, used_by: pr }; }
+      }
+      break;
+    }
     case "vote_open":
       s.open_votes.push({
         pr: num(e["pr"]), head: String(e["head"]), layer: e["layer"] as "world" | "laws", opened: num(e["opened"]), closes: num(e["closes"]),
@@ -79,8 +95,21 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       break;
     }
     case "vote_close":
+      s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
+      if (e["result"] === "reject") delete s.held_in_use[num(e["pr"])]; // rejection consumes a held fee
+      break;
     case "withdrawal":
       s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
+      if (e["fee_disposition"] !== "held") delete s.held_in_use[num(e["pr"])];
+      break;
+    case "owner_action_applied":
+      if (e["fee_disposition"] === "forfeit") delete s.held_in_use[num(e["pr"])];
+      break;
+    case "bar_lifted":
+      delete s.barred_until[num(e["account"])];
+      break;
+    case "owner_accounts_change":
+      s.pending_owner_accounts.push({ account: num(e["account"]), effective_at: num(e["effective_at"]) });
       break;
     case "merge": {
       const acct = num(e["account"]);
@@ -88,6 +117,7 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       s.logins[acct] = login;
       s.merges.push({ pr: num(e["pr"]), account: acct, mergedAt: e.at, weightMicro: big(e["weight_micro"]) });
       s.held_fees = s.held_fees.filter((h) => !(h.account === acct && h.pr === num(e["pr"])));
+      delete s.held_in_use[num(e["pr"])]; // a merge consumes the held fee that paid for it
       const paths = (e["paths"] as string[] | undefined) ?? [];
       const headers = (e["headers"] as Record<string, { question?: string; answers?: string[]; cites?: string[] }> | undefined) ?? {};
       for (const p of paths) s.path_author[p] = acct;
@@ -109,10 +139,13 @@ export function applyEvent(s: State, e: LedgerEvent, laws: Laws): State {
       if (e["login"]) s.logins[acct] = String(e["login"]);
       break;
     }
-    case "expiry":
-      s.held_fees.push({ account: num(e["account"]), layer: e["layer"] as "world" | "laws", micro: big(e["fee_micro"]), until: num(e["held_until"]), pr: num(e["pr"]) });
-      s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
+    case "expiry": {
+      const pr = num(e["pr"]), inUse = s.held_in_use[pr];
+      if (inUse) delete s.held_in_use[pr]; // Law 5: a held fee is applied once; the funded submission's expiry forfeits it
+      else s.held_fees.push({ account: num(e["account"]), layer: e["layer"] as "world" | "laws", micro: big(e["fee_micro"]), until: num(e["held_until"]), pr });
+      s.open_votes = s.open_votes.filter((v) => v.pr !== pr);
       break;
+    }
     case "owner_reject": {
       s.open_votes = s.open_votes.filter((v) => v.pr !== num(e["pr"]));
       if (e["barred_until"] !== undefined && Number.isFinite(accountOf())) s.barred_until[accountOf()] = num(e["barred_until"]);
@@ -163,6 +196,8 @@ export function materialize(s: State, now: number, laws: Laws): State {
   }
   s.weighted_accounts = count;
   s.held_fees = s.held_fees.filter((h) => h.until > now);
+  for (const p of s.pending_owner_accounts) if (p.effective_at <= now && !s.owner_accounts.includes(p.account)) s.owner_accounts.push(p.account);
+  s.pending_owner_accounts = s.pending_owner_accounts.filter((p) => p.effective_at > now);
   s.computed_at = now;
   return s;
 }

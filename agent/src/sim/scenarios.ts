@@ -102,7 +102,7 @@ export const scenarios: Scenario[] = [
     s.check("closing before any vote holds the fee", w?.["fee_disposition"] === "held" && s.state().held_fees.some((f) => f.account === N.id), String(w?.["fee_disposition"]));
   }),
 
-  sc("fee-pump", "Ten attacker accounts open three paid submissions a day for twelve days with nobody voting. Concurrency pricing makes every further queued submission cost double, the vote queue fills and the agent stops quoting, so volume alone cannot drive the base fee to its cap, and the fee falls back within a week of the flood stopping.", async (s) => {
+  sc("fee-pump", "Ten attacker accounts open three paid submissions a day for twelve days with nobody voting. Concurrency pricing makes every further queued submission cost double, the vote queue fills and the agent stops quoting, the base fee rises to its cap for as long as more paid contributions wait than can be open, and it falls back to the floor once the junk has drained through the queue.", async (s) => {
     await s.seedFounders([H1, H2, H3]);
     const attackers = Array.from({ length: 10 }, (_, i) => acct(40 + i, `spam${i}`));
     let spent = 0n, maxBase = 0n;
@@ -115,11 +115,15 @@ export const scenarios: Scenario[] = [
       if (s.state().fee.base_micro > maxBase) maxBase = s.state().fee.base_micro;
     }
     s.note(`attackers spent ${spent / 1_000_000n} USDC over 12 days; peak base fee ${Number(maxBase) / 1e6} USDC`);
-    s.check("the queue stop throttles the pump: quoting paused while the paid queue was full, and the base stayed below its cap", maxBase < 10_000_000n && s.events.some((e) => e.type === "screen_deferred" && e["reason"] === "capacity"), String(maxBase));
+    s.check("quoting paused while the paid queue was full, and the base rose to its cap because a full queue is demand (Law 5)", maxBase === 10_000_000n && s.events.some((e) => e.type === "screen_deferred" && e["reason"] === "capacity"), String(maxBase));
     s.check("base fee never exceeds the cap", maxBase <= 10_000_000n);
     s.check("the flood cost the attackers more than 10,000 USDC", spent > 10_000_000_000n, String(spent / 1_000_000n));
+    const waiting = () => [...new Set(s.events.filter((e) => e.type === "quote").map((e) => Number(e["pr"])))].filter((pr) => s.phase(pr).kind === "paid").length;
+    let weeks = 0;
+    while ((waiting() > 0 || s.state().open_votes.length > 0) && weeks < 40) { await s.advance(7 * DAY); weeks++; }
+    s.note(`the junk drained through the queue in ${weeks} weeks; a held fee is applied once, so each junk submission got at most two windows`);
     await s.advance(7 * DAY);
-    s.check("base fee returns to the floor within a week of the flood stopping", s.state().fee.base_micro === 1_000_000n, String(s.state().fee.base_micro));
+    s.check("base fee returns to the floor within a week of the queue draining", s.state().fee.base_micro === 1_000_000n, String(s.state().fee.base_micro));
   }),
 
   sc("protected-paths", "Changes that touch the Constitution, the ledger, owner files, a workflow, a case-colliding filename, a symbolic link or a non-ASCII path are rejected at intake with no fee. A README change is quoted at the Laws multiplier.", async (s) => {
@@ -191,16 +195,17 @@ export const scenarios: Scenario[] = [
     s.check("a released hold is quoted without being screened again", s.phase(d.number).kind === "quoted" && s.eventsFor(d.number).filter((e) => e.type === "screen_hold").length === 1, s.phase(d.number).kind);
   }, { holdIf: (i) => (i.files.some((f) => f.content.includes("ILLEGAL")) ? { decision: "hold", reasonClass: "unlawful", note: "sim" } : null) }),
 
-  sc("apathy-and-held-fee", "Nobody votes on a newcomer's submission. It expires with the fee held, the held fee covers a resubmission, and after 90 days an unused held fee is forfeit.", async (s) => {
+  sc("apathy-and-held-fee", "Nobody votes on a newcomer. The contribution expires with the fee held; a resubmission is quoted at zero against it; when that too expires the fee is forfeit, since a held fee is applied once; a further submission pays again.", async (s) => {
     await s.seedFounders([H1, H2, H3]);
     const pr = await s.submitAndVote(N, { "world/n1.md": "x" });
     s.check("no votes: expired with the fee held", s.phase(pr.number).kind === "done" && s.state().held_fees.some((f) => f.account === N.id));
     const pr2 = await s.submit(N, { "world/n2.md": "y" });
     s.check("resubmission is covered by the held fee with nothing to pay", s.phase(pr2.number).kind === "paid", s.phase(pr2.number).kind);
     await s.tick(); await s.advance(78 * H);
-    s.check("the second expiry keeps a held fee on the account", s.state().held_fees.some((f) => f.account === N.id));
+    s.check("the second expiry forfeits the held fee: it was applied once (Law 5)", !s.state().held_fees.some((f) => f.account === N.id) && s.state().held_in_use[pr2.number] === undefined);
     await s.advance(91 * DAY, DAY);
-    s.check("held fees are forfeit after 90 days", !s.state().held_fees.some((f) => f.account === N.id));
+    const third = await s.submit(N, { "world/n/third.md": "z" });
+    s.check("a further submission pays the full fee again", BigInt(String(s.eventsFor(third.number).find((e) => e.type === "quote")!["fee_micro"])) > 0n);
   }),
 
   sc("bootstrap-owner-decisions", "During bootstrap a passing tally waits for the owner. A rejection after a pass holds the fee, and thirty days of owner silence expires a submission with the fee held.", async (s) => {
@@ -334,19 +339,16 @@ export const scenarios: Scenario[] = [
     s.github.failNextMerge = "after";
     const a = await s.submit(N, { "world/a.md": "a" }); await s.pay(a.number); await s.tick();
     s.clock.advance(H); for (const v of [H1, H2, H3]) s.review(a.number, v, "APPROVED"); await s.tick();
-    let threw = false;
-    try { await s.advance(78 * H); } catch { threw = true; }
-    s.check("the tick that lost the merge response failed after GitHub merged", threw && s.github.pulls.get(a.number)!.merged && !s.eventsFor(a.number).some((e) => e.type === "merge"));
-    await s.tick();
+    await s.advance(78 * H);
+    s.check("the tick that lost the merge response skipped that pull request, went on, and a later tick found the merge GitHub had made", s.logs.some((n) => n.includes("skipped this tick")) && s.github.pulls.get(a.number)!.merged);
     const m = s.eventsFor(a.number).filter((e) => e.type === "merge");
     s.check("the next tick recorded the merge GitHub had already made, exactly once, with its commit", m.length === 1 && String(m[0]!["merge_commit"]) === s.github.pulls.get(a.number)!.mergeCommit);
     s.github.failNextMerge = "before";
     const b = await s.submit(M, { "world/b.md": "b" }); await s.pay(b.number); await s.tick();
     s.clock.advance(H); for (const v of [H1, H2, H3]) s.review(b.number, v, "APPROVED"); await s.tick();
-    threw = false;
-    try { await s.advance(78 * H); } catch { threw = true; }
-    s.check("the tick whose merge call failed recorded no merge", threw && !merged(s, b) && !s.eventsFor(b.number).some((e) => e.type === "merge"));
-    await s.tick();
+    const logsBefore = s.logs.length;
+    await s.advance(78 * H);
+    s.check("the tick whose merge call failed skipped only that pull request and a later tick retried it", s.logs.slice(logsBefore).some((n) => n.includes("skipped this tick")) && merged(s, b));
     s.check("the next tick retried and merged, once", merged(s, b) && s.eventsFor(b.number).filter((e) => e.type === "merge").length === 1);
     s.check("both authors hold weight", s.state().weights[String(N.id)] !== undefined && s.state().weights[String(M.id)] !== undefined);
   }),
@@ -472,13 +474,78 @@ export const scenarios: Scenario[] = [
     const r1 = replay(copy, new Map([[lawsHash, rawLaws]]), rawSchema, original, s.clock.now());
     s.check("a rotation signed by the new key instead of the key in force is a finding", !r1.ok && r1.findings.some((f) => f.event === rot.id && f.problem.includes("not signed by the key in force")), r1.findings.map((f) => f.problem).join("; "));
     const third = new Signer(generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }) as string);
-    const early: LedgerEvent = { id: s.events.length + 1, at: s.clock.now(), type: "key_rotation", new_public_key: third.publicKeyPem(), commit: "dd".repeat(20), announced_at: s.clock.now() - 13 * DAY, lost: true, reason: "lost", by: OWNER.id };
+    // A lost key: announced by a transaction from the fee destination after the last planned rotation; the block time is the clock.
+    const announced = s.clock.now() + 1;
+    const early: LedgerEvent = { id: s.events.length + 1, at: announced + 13 * DAY, type: "key_rotation", new_public_key: third.publicKeyPem(), tx: "0x" + "dd".repeat(32), announced_at: announced, announced_from: "0xdest", lost: true, reason: "lost", by: OWNER.id };
     early.sig = third.sign(early);
-    const r2 = replay([...s.events, early], new Map([[lawsHash, rawLaws]]), rawSchema, original, s.clock.now());
+    const r2 = replay([...s.events, early], new Map([[lawsHash, rawLaws]]), rawSchema, original, early.at);
     s.check("a lost-key rotation thirteen days after its announcement is a finding", !r2.ok && r2.findings.some((f) => f.event === early.id && f.problem.includes("sooner than")));
-    const late: LedgerEvent = { ...early, announced_at: s.clock.now() - 15 * DAY };
+    const late: LedgerEvent = { ...early, at: announced + 15 * DAY };
     late.sig = third.sign(late);
-    const r3 = replay([...s.events, late], new Map([[lawsHash, rawLaws]]), rawSchema, original, s.clock.now());
+    const r3 = replay([...s.events, late], new Map([[lawsHash, rawLaws]]), rawSchema, original, late.at);
     s.check("fifteen days after the announcement the new key may sign for itself", r3.ok, r3.findings.map((f) => f.problem).join("; "));
+    const stale: LedgerEvent = { ...late, announced_at: rot.at - 1 };
+    stale.sig = third.sign(stale);
+    const r4 = replay([...s.events, stale], new Map([[lawsHash, rawLaws]]), rawSchema, original, stale.at);
+    s.check("an announcement that a planned rotation by the key in force followed does not stand", !r4.ok && r4.findings.some((f) => f.problem.includes("does not stand")));
+  }),
+
+  sc("held-fee-once-in-flight", "A held fee pays for one resubmission at a time: while the submission it funds is undecided, another submission costs the full fee; a merge consumes it; an expiry holds it again.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const first = await s.submitAndVote(N, { "world/n/1.md": "one" });
+    s.check("an unreviewed submission expires with its fee held", s.eventsFor(first.number).some((e) => e.type === "expiry") && s.state().held_fees.some((f) => f.account === N.id));
+    const second = await s.submit(N, { "world/n/2.md": "two" });
+    const q2 = s.eventsFor(second.number).find((e) => e.type === "quote")!;
+    s.check("the next submission is quoted at zero against the held fee, which leaves the held set", BigInt(String(q2["fee_micro"])) === 0n && !s.state().held_fees.some((f) => f.account === N.id) && s.state().held_in_use[second.number] !== undefined);
+    await s.tick();
+    const third = await s.submit(N, { "world/n/3.md": "three" });
+    const q3 = s.eventsFor(third.number).find((e) => e.type === "quote")!;
+    s.check("while that one is undecided a further submission costs the full fee", BigInt(String(q3["fee_micro"])) > 0n, String(q3["fee_micro"]));
+    s.clock.advance(H); for (const v of [H1, H2, H3]) s.review(second.number, v, "APPROVED"); await s.tick();
+    await s.advance(78 * H);
+    s.check("the merge of the funded submission consumes the held fee for good", merged(s, second) && s.state().held_in_use[second.number] === undefined && !s.state().held_fees.some((f) => f.account === N.id));
+    const fourth = await s.submit(N, { "world/n/4.md": "four" });
+    s.check("nothing is left to fund another free submission", BigInt(String(s.eventsFor(fourth.number).find((e) => e.type === "quote")!["fee_micro"])) > 0n);
+  }),
+
+  sc("release-covers-the-held-head", "The owner releases a held submission; the author then pushes different content. The release does not cover it: the new head is screened again and held again.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const pr = await s.submit(N, { "world/n/x.md": "HOLDME first" });
+    s.check("held", s.eventsFor(pr.number).some((e) => e.type === "screen_hold"));
+    s.release(pr.number); await s.tick();
+    s.check("released head is quoted without a second screen", s.rt.quoteFor(pr.number) !== null && s.eventsFor(pr.number).some((e) => e.type === "quote" && e["screening"] === "released"));
+    s.github.push(pr.number); pr.contents["world/n/x.md"] = "HOLDME second";
+    await s.advance(25 * H, H); await s.tick();
+    s.check("after a push, the new head was screened by the model and held again, not quoted on the old release", s.eventsFor(pr.number).filter((e) => e.type === "screen_hold").length === 2 && !s.eventsFor(pr.number).some((e) => e.type === "quote" && e["screening"] === "released" && String(e["head"]) === pr.headSha));
+  }, { holdIf: (i) => (i.files.some((f) => f.content.includes("HOLDME")) ? { decision: "hold", reasonClass: "unlawful", note: "sim" } : null) }),
+
+  sc("closed-before-open", "A paid submission is closed by its author while it waits for a place; a quoted one is closed unpaid. Both are settled: the paid one is a withdrawal with the fee held, neither holds a queue place or a concurrency slot.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const paid = await s.submit(N, { "world/n/p.md": "paid" }); await s.pay(paid.number);
+    const quoted = await s.submit(M, { "world/m/q.md": "quoted" });
+    await s.github.close(paid.number); await s.github.close(quoted.number);
+    await s.tick();
+    s.check("the paid one is a withdrawal with the fee held", s.eventsFor(paid.number).some((e) => e.type === "withdrawal" && e["fee_disposition"] === "held") && s.state().held_fees.some((f) => f.account === N.id));
+    s.check("the quoted one lapsed", s.eventsFor(quoted.number).some((e) => e.type === "quote_lapsed"));
+    const again = await s.submit(N, { "world/n/p2.md": "again" });
+    const q = s.eventsFor(again.number).find((e) => e.type === "quote")!;
+    s.check("the closed submission no longer counts as a concurrent paid one", Number(q["concurrency"]) === 1, String(q["concurrency"]));
+  }),
+
+  sc("dismissal-and-review-spam", "A collaborator dismisses an approval on the platform before close: the ledger's record still counts, as Law 2 says. A voter who changes its review fifty times in a window writes a bounded number of ledger events and counts as one vote toward the throughput target.", async (s) => {
+    await s.seedFounders([H1, H2, H3, H4]);
+    const pr = await s.submit(N, { "world/n/d.md": "x" }); await s.pay(pr.number); await s.tick();
+    s.clock.advance(H); for (const v of [H1, H2, H3]) s.review(pr.number, v, "APPROVED"); await s.tick();
+    for (let i = 0; i < 50; i++) { s.clock.advance(60); s.review(pr.number, H4, i % 2 ? "CHANGES_REQUESTED" : "APPROVED"); await s.tick(); }
+    const h4 = s.events.filter((e) => e.type === "review" && e["pr"] === pr.number && e["account"] === H4.id);
+    s.check("fifty review changes by one voter were recorded as at most ten events during the window", h4.length <= 10 && h4.length >= 2, String(h4.length));
+    s.github.dismissReview(pr.number, H1.id);
+    await s.advance(78 * H);
+    const close = closeOf(s, pr)!;
+    s.check("the dismissed approval still counted and the contribution merged", merged(s, pr) && Number(close["yes_voters"]) === 3);
+    const h4final = s.events.filter((e) => e.type === "review" && e["pr"] === pr.number && e["account"] === H4.id);
+    s.check("the voter's final state was recorded at close", Number(h4final[h4final.length - 1]!["review_id"]) === s.github.pulls.get(pr.number)!.reviews.filter((r) => r.account === H4.id).slice(-1)[0]!.reviewId);
+    const adjust = [...s.events].reverse().find((e) => e.type === "fee_adjust")!;
+    s.check("the throughput target saw one vote from that voter, not fifty", Number(adjust["target"]) === 3, String(adjust["target"]));
   }),
 ];

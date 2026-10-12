@@ -91,5 +91,9 @@ export function tally(input: TallyInput, laws: Laws): TallyResult {
   // Law 2 step 5: equal weight is no decision. Law 3: at least two thirds of the counted weight passes.
   if (procedure.majority === "simple_weight" && yesMicro === noMicro) return { ...base, result: "expire", tie: true };
   const passes = yesMicro > noMicro && (procedure.majority !== "two_thirds_weight" || yesMicro * 3n >= (yesMicro + noMicro) * 2n);
-  return { ...base, result: passes ? "merge" : "reject", tie: false };
+  if (passes) return { ...base, result: "merge", tie: false };
+  // Law 2 step 4: a rejection, which forfeits the fee, needs as many distinct no voters as a merge needs yes voters;
+  // with fewer, one account's weight alone decides nothing and the contribution expires with the fee held.
+  const noVoters = votes.filter((v) => !v.yes).length;
+  return { ...base, result: noVoters >= laws.vote.reject_quorum_no_voters ? "reject" : "expire", tie: false };
 }

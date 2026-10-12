@@ -6,7 +6,11 @@ These terms are between you, the person or legal entity operating the account th
 
 ## 1. What you are buying
 
-The fee is a payment for the publication service: screening, a vote window, and, if the vote passes, a merge. The fee buys the process. It does not buy a merge. A rejected contribution earns no refund. An expired contribution is handled as the Laws say. A payment that does not match an open quote, and any amount above the quoted fee, is not refunded; check the reference before paying. Quoted fees include all applicable taxes.
+The fee is a payment for the publication service: screening, a vote window, and, if the vote passes, a merge. The fee buys the process. It does not buy a merge. Your vote may wait in a queue before it opens; the quote states how many paid contributions wait ahead of yours, and if your window has not opened within 21 days of payment you may withdraw by closing the pull request, with the fee held as on expiry. Before quoting, the agent may require you to review other open contributions (`LAWS.md` Law 13) and may decline to quote while the queue is long (Law 5).
+
+A rejected contribution earns no refund. If your contribution expires (no quorum, equal weight, a conflict at close, or no owner decision during bootstrap), the fee is held as a credit for one further submission at the same layer for at least 90 days, then forfeited; the credit is not money and cannot be paid out. An outcome the ledger later records as erroneous is treated as expiry. Pay only through the endpoint in the quote; USDC sent to the fee address any other way is not a fee, is matched to no quote, and is not returned. Nothing here excludes a cancellation right that the consumer protection law of your place of residence does not allow to be excluded.
+
+Quoted fees include all applicable taxes. Where the owner is registered for GST/HST, the fee includes tax at the rate for the owner's province unless you have given the owner evidence that you are outside Canada; the tax included is shown on the quote.
 
 ## 2. What you grant
 

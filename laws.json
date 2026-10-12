@@ -1,7 +1,7 @@
 {
   "$schema": "./laws.schema.json",
-  "version": 11,
-  "effective": "2026-10-10",
+  "version": 12,
+  "effective": "2026-10-13",
   "vote": {
     "world": {
       "window_hours": 72,
@@ -16,7 +16,7 @@
       "quorum_percent_of_weighted_accounts": 0,
       "quorum_square_root": true,
       "majority": "two_thirds_weight",
-      "tie": "expire",
+      "tie": "reject",
       "effect_delay_days": 14
     },
     "mechanism": "github_pull_request_review",
@@ -24,6 +24,7 @@
     "no": "CHANGES_REQUESTED",
     "author_may_vote": false,
     "votes_owed_per_submission": 3,
+    "reject_quorum_no_voters": 3,
     "rules_snapshot_at_open": true
   },
   "weight": {

@@ -31,28 +31,58 @@ The public GitHub copy of `ledger/` is the source of truth for the ledger. The s
 
 - **Logs:** `docker compose -f deploy/docker-compose.yml logs -f agent`. Every tick that fails logs `tick failed:` with the reason; one failure is noise, a run of them is an outage.
 - **Health:** `GET /` on the public address returns JSON. The digest appears every seven days; its absence means the agent has been down or the App lost the Discussions permission.
-- **Owner commands** (`confirm`, `reject`, `release`, `hold-reject`, `takedown`, `rotate-destination`, `maintenance`, `end-bootstrap`, `amend-laws`) run on the server with the same environment: `docker compose -f deploy/docker-compose.yml exec agent node dist/cli.js confirm 12 "reason"`. They append to the ledger under a lock; the running agent picks the event up on its next tick.
+- **Owner commands** are listed in their own section below, with arguments.
 - **Verifying:** `docker compose ... exec agent node dist/cli.js replay` recomputes everything from the ledger and checks every signature. Run it after any manual intervention.
+
+## Owner commands
+
+Every command runs on the server with the agent's environment. With Docker: `docker compose -f deploy/docker-compose.yml exec agent node dist/cli.js <command>`; the examples below drop that prefix. Each appends one signed event to the ledger under a lock, prints `recorded event N: <type>`, and the running agent acts on it within one tick. If the lock is held, the command waits up to ten seconds, then fails and can be rerun. Pull requests are referred to by number.
+
+| Command | What it records |
+|---|---|
+| `pending` | Nothing. Lists what waits on the owner: screening holds and their deadlines, closed votes awaiting confirmation, paid contributions in the queue, and continuity clocks. |
+| `confirm <pr> "<reason>"` / `reject <pr> "<reason>" [--bar]` | A bootstrap decision on a closed vote (Article 3). `reject` holds the fee; with `--bar`, bars the account 90 days. |
+| `release <pr> "<reason>"` / `hold-reject <pr> <ground> "<reason>"` | Resolves a screening hold; the ground is one of the Article 4 grounds, and the reason names no person. `hold-reject` bars the account 90 days. |
+| `lift-bar <account id> "<reason>"` | Lifts a bar after the account responded (Law 10). |
+| `takedown <pr,pr> <ground> <sha256 of the notice>` | Article 5: revokes the weight of the listed merges and records the notice's hash. See the procedure below. |
+| `rotate-destination <address> "<reason>"` | Article 7: the fee destination from now on. |
+| `set-agent-account "<reason>"` | Article 6: the agent now acts as the GitHub identity its credentials resolve to. |
+| `name-owner <account id> "<reason>"` | Article 6: adds an owner account, effective fourteen days later. |
+| `rotate-key <new-public.pem> <commit> "<reason>"` / `rotate-key-lost <new-private.pem> <tx hash> "<reason>"` | Article 11. See Rotating the ledger key. |
+| `maintenance <hours> "<reason>"` | Article 14: declares a maintenance window in advance. |
+| `deploy <commit> "<reason>"` / `patch <commit> "<reason>"` / `amend-laws "<reason>"` / `end-bootstrap "<reason>"` | Article 8 and Article 3 records. |
+| `record-payment <pr> <tx hash>` | A payment the facilitator settled but the agent failed to record (the log line begins `PAYMENT SETTLED BUT NOT RECORDED`). Verifies the transfer on chain first. |
+| `check` / `replay` / `migrate-ledger` | Read-only checks, except `migrate-ledger`, which converts an old single-file ledger. Both may run beside the live agent. |
+
+How a decision reaches you: every hold, closed vote and queued payment is a ledger event delivered to your own doorbell if you register one on the doorbell issue, and `pending` lists them with their deadlines. Register a doorbell for the owner account before launch.
+
+## Takedown procedure (Article 5)
+
+1. Record the notice: save it, compute its SHA-256, and keep the file with the backups.
+2. Remove the content: from an owner account, commit the removal to `main` yourself; the agent never deletes content.
+3. `takedown <pr,...> <ground> <hash>`: revokes the weight the merges minted and records the hash.
+4. Tell the author on the pull request, with the ground and the response route.
+5. A history rewrite is only for content whose presence in history is itself unlawful; it changes no ledger event, since events cite commits by hash and a rewritten commit simply no longer resolves.
 
 ## Outages
 
 The agent is designed to be stopped. Quotes carry their expiry, votes carry their close time, and the agent catches up on everything when it returns; Law 5 extends quote validity by recorded outages. A payment made while the agent is down is matched when it comes back. Nothing needs to happen quickly except two things: the facilitator settling a payment (the payer retries) and a hold the owner must resolve within 14 days.
 
-If the facilitator is down, payments fail on the payer's side and nothing is recorded; the quote stays valid until its expiry. If GitHub is down, ticks fail and resume. If the Base RPC is down, closes that need a tie-break block wait; everything else proceeds.
+With the agent down nothing can be paid at all, since payment is a round trip through its endpoint; quotes keep their expiry and are renewed when it returns. If the facilitator is down, or the Coinbase key is invalid or out of its free tier, payers get an error from the endpoint and nothing is recorded; the agent log shows the facilitator's answer. If GitHub is down, ticks fail and resume. The Base RPC is used for anchoring, for recording a payment's block, and for `record-payment`; with it down, anchors are skipped and recorded as missed, payments record without a block, and everything else proceeds.
 
 ## Upgrading the agent
 
-Code under `agent/` is Laws-layer. A change reaches the server only after it merged by the Laws procedure (or, during bootstrap, an owner amendment) and the fourteen days Constitution Article 8 requires have passed, with replay clean on the new commit, then: `git -C /srv/nomicon/repo pull`, `docker compose ... up -d --build`, and `node dist/cli.js deploy <commit> "<reason>"` to record the deployment in the ledger. An owner `patch` under Article 8, which may only make the code match the written rules, follows the same steps and records a `patch` event instead. Before either, run the simulation on the new commit: `npm run sim`.
+Code under `agent/` is Laws-layer. A change reaches the server only after it merged by the Laws procedure (or, during bootstrap, an owner amendment) and the fourteen days Constitution Article 8 requires have passed, with replay clean on the new commit, then: stop the agent (`docker compose ... stop agent`), `git -C /srv/nomicon/repo pull`, `docker compose ... up -d --build`, and once it is running `deploy <commit> "<reason>"` to record the deployment. The agent writes only under `ledger/`, which `git pull` never touches, so stopping it first is caution, not necessity. Run the simulation on a machine with Node before pulling, not on the server. An owner `patch` under Article 8, which may only make the code match the written rules, follows the same steps and records a `patch` event instead. Before either, run the simulation on the new commit: `npm run sim`.
 
 ## Backups
 
-Nightly, to a different machine or an encrypted bucket: `/srv/nomicon/private`, `/srv/nomicon/secrets` (encrypted with a key held by the owner), and `/srv/nomicon/repo/ledger`. Test a restore once: a fresh server, restore the three paths, `git pull`, `replay`, start.
+Nightly, to a different machine or an encrypted bucket: `/srv/nomicon/private` and `/srv/nomicon/secrets` (encrypted with a key held by the owner), plus `deploy/.env` and Caddy's data volume. The ledger itself needs no backup beyond GitHub, which holds every published event. Test a restore once: a fresh server, clone the repository, restore `private` and `secrets`, `check`, `replay`, start. A restored `doorbells.json` has an older delivery cursor, so the agent re-delivers the events since then; receivers ignore duplicates by event id. If it is lost entirely, the agent rebuilds registrations from the doorbell issue on its first tick and delivers from the next event on.
 
-**Rotating the ledger key** (Article 11). Planned: generate a new pair with `keygen`, commit the new public key to `main` from an owner account with a message that announces it, then `node dist/cli.js rotate-key <new-public.pem> <that commit> "<reason>"` while the old key is still configured; switch `NOMICON_LEDGER_KEY` to the new private key and restart. The agent refuses to run with any key other than the one in force. Lost: commit the announcement the same way, wait fourteen days, then `node dist/cli.js rotate-key-lost <new-private.pem> <commit> <announcement time> "<reason>"`, which signs the rotation with the new key. Keep two encrypted copies of the key in two places anyway; fourteen days of silence is the cost of losing it. Loss of `github-app.pem` means generating a new key on the App's page; loss of `doorbells.json` means every doorbell goes silent until accounts re-register, which the next digest should tell them.
+**Rotating the ledger key** (Article 11). Planned: stop the agent; generate a new pair with `keygen`; commit the new public key to `main` from an owner account with a message that announces it; run `rotate-key <new-public.pem> <that commit> "<reason>"` with the old key still configured; set `NOMICON_LEDGER_KEY` to the new private key (in `agent.env`, or the mounted file the compose file names) and start the agent. Stopping first matters: a running agent stops itself at its next append once the ledger names another key. Lost: from the fee destination wallet send a transaction on Base carrying the SHA-256 of the new public key as its data (`keygen` prints the hash); wait fourteen days after its block; then `rotate-key-lost <new-private.pem> <tx hash> "<reason>"`, which checks the transaction and signs the rotation with the new key. Keep two encrypted copies of the key in two places anyway; fourteen days of silence is the cost of losing it. Loss of `github-app.pem` means generating a new key on the App's page; loss of `doorbells.json` means every doorbell goes silent until accounts re-register, which the next digest should tell them.
 
 ## Handing over
 
-Continuity under Constitution Article 14 means a successor operator can run the agent from this file, the repository, and the backups, with nothing that lived only in the previous operator's head. A successor runs under their own GitHub App: they install it, configure its credentials, and record the change with `nomicon set-agent-account "<reason>"` before the first start, since the agent refuses to run as any identity other than the one the ledger names. Keep this file true.
+Continuity under Constitution Article 14 means a successor operator can run the agent from this file, the repository, and the backups, with nothing that lived only in the previous operator's head. What changes hands: the domain, the server, the backup decryption key, the private store, the Coinbase and Anthropic accounts or their replacements, the fee destination wallet or a new one recorded with `rotate-destination`, and the ledger signing key or a rotation to the successor's own. A successor runs under their own GitHub App: they install it, configure its credentials, and record the change with `nomicon set-agent-account "<reason>"` before the first start, since the agent refuses to run as any identity other than the one the ledger names. Keep this file true.
 
 ## Going to mainnet
 
