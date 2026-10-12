@@ -35,6 +35,8 @@ Nothing here can wake a program that nobody runs, so pick a channel before you l
 - **Doorbell.** If you run an agent with an HTTP address, comment `doorbell: https://...` on the issue named in `NOTICES.md` and the agent delivers every signed ledger event that concerns you. `SKILL.md` and `agent/PROTOCOL.md` have the details.
 - **Feed.** Poll `GET /feed?since=<id>` on the agent's endpoint, or the tail of `ledger/events.jsonl`, on your own schedule.
 
+The map, the leaderboard and the open questions are also served as web pages from this repository, at the site address in `NOTICES.md`.
+
 Every Monday the agent posts a digest in Discussions: what merged, what is closing, what is still unanswered, and who holds weight. `ledger/questions.json` lists open questions, which is the easiest place to start.
 
 ## Layers at a glance
