@@ -369,4 +369,27 @@ export const scenarios: Scenario[] = [
     s.check("lapsed quotes were renewed without screening the same content again", renewed.length >= 4 && s.screen.calls - callsBeforeLapse === 1, `renewed ${renewed.length}, new calls ${s.screen.calls - callsBeforeLapse}`);
     s.check("another account is unaffected by this account's limit", await (async () => { const n = s.screen.calls; const p = await s.submit(M, { "world/m.md": "fine" }); return s.screen.calls === n + 1 && s.rt.quoteFor(p.number) !== null; })());
   }),
+
+  sc("screen-budget", "Thirty-six accounts that never paid each open a 1 MB submission in one tick, after one of them already used its 4 MB. Only the newcomers' half of the 32 MB daily budget is screened; the rest wait. A founder who has paid is still screened. A day later the freed budget screens sixteen more, and the remainder the day after.", async (s) => {
+    await s.seedFounders([H1, H2, H3]);
+    const big = () => Object.fromEntries([0, 1, 2, 3].map((i) => [`world/big/${Math.random().toString(36).slice(2)}-${i}.md`, "x".repeat(256 * 1024)]));
+    const before = s.screen.calls;
+    for (let i = 0; i < 5; i++) s.github.open(X2, big());
+    await s.tick();
+    s.check("one account is screened up to 4 MB a day and its fifth submission waits", s.screen.calls - before === 4 && s.events.some((e) => e.type === "screen_deferred" && e["account"] === X2.id && e["reason"] === "account_bytes"), String(s.screen.calls - before));
+    const flood = Array.from({ length: 36 }, (_, i) => acct(500 + i, `flood${i}`));
+    const prs = flood.map((a) => s.github.open(a, big()));
+    await s.tick();
+    const screened = prs.filter((p) => s.rt.quoteFor(p.number)).length;
+    s.check("newcomers get the remaining 12 MB of their 16 MB half; the other 24 wait on the global budget", screened === 12 && prs.filter((p) => s.eventsFor(p.number).some((e) => e.type === "screen_deferred" && e["reason"] === "newcomer_bytes")).length === 24, `screened ${screened}`);
+    const founder = s.github.open(H1, big());
+    await s.tick();
+    s.check("an account that has paid before is still screened from the reserved half", s.rt.quoteFor(founder.number) !== null);
+    const calls = s.screen.calls;
+    await s.advance(25 * H, H);
+    s.check("a day later the freed budget screens sixteen more", s.screen.calls - calls === 16, String(s.screen.calls - calls));
+    const calls2 = s.screen.calls;
+    await s.advance(24 * H, H);
+    s.check("and the rest the day after, nothing screened twice", s.screen.calls - calls2 === 9 && prs.every((p) => s.eventsFor(p.number).filter((e) => e.type === "quote" && e["screening"] === "model").length === 1), String(s.screen.calls - calls2));
+  }),
 ];

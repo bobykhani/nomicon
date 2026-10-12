@@ -162,6 +162,11 @@ export class GitHubAdapter implements GitHubPort {
     return comments.map((c) => ({ id: c.id, account: c.user?.id ?? 0, login: c.user?.login ?? "", body: c.body ?? "", createdAt: Math.floor(Date.parse(c.created_at) / 1000) }));
   }
 
+  async starCount(): Promise<number> {
+    const { data } = await this.octokit.repos.get({ owner: this.owner, repo: this.repo });
+    return data.stargazers_count;
+  }
+
   async listWatchers(): Promise<Array<{ id: number; login: string }>> {
     const subs = await this.octokit.paginate(this.octokit.activity.listWatchersForRepo, { owner: this.owner, repo: this.repo, per_page: 100 });
     return subs.map((u) => ({ id: u.id, login: u.login }));

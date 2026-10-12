@@ -43,6 +43,8 @@ export interface GitHubPort {
   listIssueComments(issue: number): Promise<IssueComment[]>;
   /** Accounts watching the repository. */
   listWatchers(): Promise<Array<{ id: number; login: string }>>;
+  /** How many accounts have starred the repository. */
+  starCount(): Promise<number>;
   /** Post a discussion; returns its URL. Throws if discussions are unavailable. */
   postDiscussion(title: string, body: string): Promise<string>;
 }

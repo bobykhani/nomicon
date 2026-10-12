@@ -79,7 +79,9 @@ export class Notifier {
     if (last && now - last.at < laws.notices.digest_every_days * 86400) return;
     if (now - this.lastDigestAttempt < 3600) return;
     this.lastDigestAttempt = now;
-    const d = buildDigest({ events, state, now, laws, days: laws.notices.digest_every_days });
+    let stars: number | undefined;
+    try { stars = await this.d.github.starCount(); } catch { /* the digest goes out without it */ }
+    const d = buildDigest({ events, state, now, laws, days: laws.notices.digest_every_days, ...(stars !== undefined ? { stars } : {}) });
     try {
       const url = await this.d.github.postDiscussion(d.title, d.body);
       this.d.ledger.append(now, "digest", { url, ...d.counts });

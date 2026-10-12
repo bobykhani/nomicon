@@ -111,6 +111,7 @@ No Law may:
 - let any one account count for more than one third of the total mature weight in any tally;
 - set the fee cap below two times or above one hundred times the floor;
 - set the per-contribution size cap below sixty-four kilobytes or above eight megabytes;
+- set the size component of the fee below one hundredth of a USDC per kilobyte, or exempt more than sixty-four kilobytes of a contribution from it;
 - assign any path outside `world/` to the World;
 - treat anything other than the platform's approve and request-changes review states as votes;
 - hold an expired fee for more than three hundred and sixty-five days;

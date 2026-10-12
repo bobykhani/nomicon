@@ -41,6 +41,8 @@ export const ARTICLE_9A = {
   voteNo: "CHANGES_REQUESTED" as const,
   maxExpiryHoldDays: 365,
   minLawsEffectDelayDays: 7,
+  minSizePerKbUsdc: 0.01,
+  maxSizeFreeKb: 64,
 } as const;
 
 /** Article 7. */

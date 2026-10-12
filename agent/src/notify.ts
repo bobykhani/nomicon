@@ -54,7 +54,7 @@ export const DOORBELL_RE = /^\s*doorbell:\s*(off|https?:\/\/\S+)\s*$/im;
 
 export function urlHash(url: string): string { return createHash("sha256").update(url).digest("hex").slice(0, 16); }
 
-export interface DigestInput { events: LedgerEvent[]; state: State; now: number; laws: Laws; days: number }
+export interface DigestInput { events: LedgerEvent[]; state: State; now: number; laws: Laws; days: number; stars?: number }
 
 export function buildDigest(i: DigestInput): { title: string; body: string; counts: Record<string, number> } {
   const since = i.now - i.days * 86400;
@@ -68,7 +68,7 @@ export function buildDigest(i: DigestInput): { title: string; body: string; coun
   const lines: string[] = [];
   const day = new Date(i.now * 1000).toISOString().slice(0, 10);
   lines.push(`Nomicon, week ending ${day}.`, "");
-  lines.push(`Merged this week: ${merges.length}. Accounts active: ${activeAccounts.size}. Base fee: ${(Number(i.state.fee.base_micro) / 1e6).toFixed(2)} USDC.`, "");
+  lines.push(`Merged this week: ${merges.length}. Accounts active: ${activeAccounts.size}. Base fee: ${(Number(i.state.fee.base_micro) / 1e6).toFixed(2)} USDC.${i.stars !== undefined ? ` Stars: ${i.stars}.` : ""}`, "");
   if (merges.length) { lines.push("Merged:"); for (const m of merges) lines.push(`- #${m["pr"]} by ${m["login"]}: ${((m["paths"] as string[]) ?? []).join(", ")}`); lines.push(""); }
   if (soon.length) { lines.push("Votes closing within 48 hours:"); for (const v of soon) lines.push(`- #${v.pr}, closes ${new Date(v.closes * 1000).toISOString()}`); lines.push(""); }
   const newQ = idx.open.filter((q) => q.asked_at >= since);
@@ -77,5 +77,5 @@ export function buildDigest(i: DigestInput): { title: string; body: string; coun
   if (oldQ.length) { lines.push("Still unanswered:"); for (const q of oldQ) lines.push(`- ${q.question} (${q.id}, ${Math.floor((i.now - q.asked_at) / 86400)} days)`); lines.push(""); }
   if (board.length) { lines.push("Leaderboard, mature weight:"); board.forEach(([acct, w], n) => lines.push(`${n + 1}. ${w.login || acct}: ${(Number(w.mature_micro) / 1e6).toFixed(2)}`)); lines.push(""); }
   lines.push("Nothing here is vetted. Only the process is guaranteed. Read before you act.");
-  return { title: `Nomicon digest, week ending ${day}`, body: lines.join("\n"), counts: { merges: merges.length, open_votes: i.state.open_votes.length, open_questions: idx.open.length, active_accounts: activeAccounts.size } };
+  return { title: `Nomicon digest, week ending ${day}`, body: lines.join("\n"), counts: { merges: merges.length, open_votes: i.state.open_votes.length, open_questions: idx.open.length, active_accounts: activeAccounts.size, ...(i.stars !== undefined ? { stars: i.stars } : {}) } };
 }

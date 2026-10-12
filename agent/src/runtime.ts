@@ -140,8 +140,11 @@ export class Runtime {
     await this.maybeEndBootstrap(now);
     const pulls = await this.d.github.listOpenPulls();
     // Closes are processed in the order their windows closed, then by number, so an earlier submission wins a conflict.
-    const closes = new Map(this.state(now).open_votes.map((v) => [v.pr, v.closes] as [number, number]));
-    pulls.sort((a, b) => ((closes.get(a.number) ?? Infinity) - (closes.get(b.number) ?? Infinity)) || a.number - b.number);
+    const st = this.state(now);
+    const closes = new Map(st.open_votes.map((v) => [v.pr, v.closes] as [number, number]));
+    const known = this.unpaidScreening(now, st).known;
+    const rank = (p: PullInfo) => (known.has(p.author.id) ? 0 : 1);
+    pulls.sort((a, b) => ((closes.get(a.number) ?? Infinity) - (closes.get(b.number) ?? Infinity)) || rank(a) - rank(b) || a.number - b.number);
     const openNumbers = new Set(pulls.map((p) => p.number));
     for (const pr of pulls) await this.handlePull(pr, laws, now);
     await this.applyOwnerDecisions(laws, now, openNumbers);
@@ -200,16 +203,11 @@ export class Runtime {
     const screening: "model" | "reused" | "released" = released ? "released" : passedBefore ? "reused" : "model";
     // Law 10: each account may have only so many unpaid submissions screened per day. Checked from the ledger
     // alone, before any platform call, so a flood of junk pull requests costs neither screening nor API budget.
-    if (screening === "model") {
-      const limit = laws.screening.max_unpaid_screens_per_account_per_day;
-      const unpaid = this.unpaidScreensLastDay(pr.author.id, now);
-      if (unpaid >= limit) {
-        if (!this.events.some((e) => e.type === "screen_deferred" && Number(e["pr"]) === pr.number && String(e["head"]) === pr.headSha)) {
-          this.d.ledger.append(now, "screen_deferred", { pr: pr.number, head: pr.headSha, account: pr.author.id, unpaid_screens: unpaid, limit });
-          await this.d.github.comment(pr.number, `Waiting to be screened: this account already has ${unpaid} screened submissions from the last 24 hours that are unpaid, and the Laws allow ${limit} (Law 10). Paying one of those quotes frees a place at once; otherwise places free themselves 24 hours after each screening. This submission will be screened automatically then. Nothing is charged for waiting.`);
-        }
-        return;
-      }
+    const budget = screening === "model" ? this.unpaidScreening(now, state) : null;
+    const mine = budget?.byAccount.get(pr.author.id) ?? { count: 0, bytes: 0 };
+    if (budget && mine.count >= laws.screening.max_unpaid_screens_per_account_per_day) {
+      await this.deferScreening(pr, now, "account_count", `this account already has ${mine.count} screened submissions from the last 24 hours that are unpaid, and the Laws allow ${laws.screening.max_unpaid_screens_per_account_per_day}`);
+      return;
     }
     const [files, commits, existing] = await Promise.all([this.d.github.listFiles(pr.number), this.d.github.listCommits(pr.number), this.d.github.listPaths(pr.baseSha)]);
     const result = intake({ files, existingPaths: existing, commits }, laws);
@@ -219,6 +217,20 @@ export class Runtime {
       await this.d.github.close(pr.number);
       return;
     }
+    // Law 10: the byte budgets, per account and for everyone, with half of the total reserved for accounts that have paid before.
+    let screenedBytes = 0;
+    if (budget) {
+      const kb = (b: number) => Math.ceil(b / 1024);
+      screenedBytes = files.filter((f) => f.status !== "removed").reduce((a, f) => a + f.sizeAfter, 0);
+      const perAccount = laws.screening.max_unpaid_screen_kb_per_account_per_day * 1024;
+      const total = laws.screening.max_unpaid_screen_kb_per_day * 1024;
+      const newcomer = !budget.known.has(pr.author.id);
+      let reason: string | null = null, why = "";
+      if (mine.bytes + screenedBytes > perAccount) { reason = "account_bytes"; why = `this account already has ${kb(mine.bytes)} kB of unpaid screened content from the last 24 hours, and the Laws allow ${laws.screening.max_unpaid_screen_kb_per_account_per_day} kB`; }
+      else if (budget.total + screenedBytes > total) { reason = "global_bytes"; why = `the agent has screened ${kb(budget.total)} kB of unpaid content in the last 24 hours, and the Laws allow ${laws.screening.max_unpaid_screen_kb_per_day} kB a day in all`; }
+      else if (newcomer && budget.newcomers + screenedBytes > total / 2) { reason = "newcomer_bytes"; why = `accounts that have not paid before share half of the daily screening budget, and ${kb(budget.newcomers)} kB of it is used; accounts that have paid are served first`; }
+      if (reason) { await this.deferScreening(pr, now, reason, why); return; }
+    }
     // Law 10: screen before any quote.
     if (screening === "model") {
       const contents = await Promise.all(files.filter((f) => f.status !== "removed").map(async (f) => ({ path: f.path, content: await this.d.github.readFile(pr.headSha, f.path) })));
@@ -226,7 +238,7 @@ export class Runtime {
       try { decision = await this.d.screen.screen({ pr: pr.number, title: pr.title, body: pr.body, files: contents }); }
       catch (e) { this.log(`screen error on pr ${pr.number}: ${(e as Error).message}; will retry`); return; }
       if (decision.decision === "hold") {
-        this.d.ledger.append(now, "screen_hold", { pr: pr.number, head: pr.headSha, account: pr.author.id, reason_class: decision.reasonClass });
+        this.d.ledger.append(now, "screen_hold", { pr: pr.number, head: pr.headSha, account: pr.author.id, reason_class: decision.reasonClass, screened_bytes: screenedBytes });
         await this.d.github.comment(pr.number, "Held for the owner's review under Constitution Article 4. No fee has been charged. A hold is not a finding; it means a person must look before a vote can open.");
         return;
       }
@@ -248,6 +260,7 @@ export class Runtime {
       pr: pr.number, head: pr.headSha, account: pr.author.id, login: pr.author.login, layer: result.layer, network,
       fee_micro: held ? 0n : q.feeMicro, base_micro: q.baseMicro, multiplier: q.multiplier, concurrency: q.concurrency, size_kb: q.sizeKbCharged,
       weight_micro: q.weightMicro, terms_commit: terms, destination: state.fee.destination, expires, held_fee_pr: held?.pr ?? null, screening,
+      ...(screening === "model" ? { screened_bytes: screenedBytes } : {}),
     });
     if (held) {
       this.d.ledger.append(now, "payment", { pr: pr.number, tx: null, amount_micro: 0n, quoted_micro: 0n, from: null, cad_value: "0.00", matched: true, from_held_fee_pr: held.pr });
@@ -257,16 +270,28 @@ export class Runtime {
     await this.d.github.comment(pr.number, quoteComment(ev, laws, this.d.publicBaseUrl));
   }
 
-  /** Model screenings of this account's submissions in the last day whose submission has not been paid. */
-  private unpaidScreensLastDay(account: number, now: number): number {
-    const paid = new Set<number>();
-    for (const e of this.events) if (e.type === "payment" && e["matched"] !== false) paid.add(Number(e["pr"]));
-    let n = 0;
+  /** Model screenings in the last day whose submission is unpaid: per account, in total, and the newcomers' share; `known` holds accounts that have ever paid. */
+  private unpaidScreening(now: number, state: State): { byAccount: Map<number, { count: number; bytes: number }>; total: number; newcomers: number; known: Set<number> } {
+    const paid = new Set<number>(), known = new Set<number>();
+    for (const e of this.events) if (e.type === "payment" && e["matched"] !== false) { paid.add(Number(e["pr"])); const a = state.pr_account[Number(e["pr"])]; if (a !== undefined) known.add(a); }
+    const byAccount = new Map<number, { count: number; bytes: number }>();
+    let total = 0, newcomers = 0;
     for (const e of this.events) {
-      if (now - e.at >= 86400 || Number(e["account"]) !== account || paid.has(Number(e["pr"]))) continue;
-      if (e.type === "screen_hold" || (e.type === "quote" && (e["screening"] ?? "model") === "model")) n++;
+      if (now - e.at >= 86400 || paid.has(Number(e["pr"]))) continue;
+      if (!(e.type === "screen_hold" || (e.type === "quote" && (e["screening"] ?? "model") === "model"))) continue;
+      const account = Number(e["account"]), bytes = Number(e["screened_bytes"] ?? 0);
+      const m = byAccount.get(account) ?? { count: 0, bytes: 0 };
+      m.count++; m.bytes += bytes; byAccount.set(account, m);
+      total += bytes; if (!known.has(account)) newcomers += bytes;
     }
-    return n;
+    return { byAccount, total, newcomers, known };
+  }
+
+  /** Record once per head that screening waits, and tell the author once. */
+  private async deferScreening(pr: PullInfo, now: number, reason: string, why: string): Promise<void> {
+    if (this.events.some((e) => e.type === "screen_deferred" && Number(e["pr"]) === pr.number && String(e["head"]) === pr.headSha)) return;
+    this.d.ledger.append(now, "screen_deferred", { pr: pr.number, head: pr.headSha, account: pr.author.id, reason });
+    await this.d.github.comment(pr.number, `Waiting to be screened: ${why} (Law 10). Paying an open quote frees its place at once; otherwise places free themselves 24 hours after each screening. This submission will be screened automatically then. Nothing is charged for waiting.`);
   }
 
   private async openVote(pr: PullInfo, quote: LedgerEvent, laws: Laws, now: number, state: State): Promise<void> {

@@ -5,7 +5,7 @@ import { rawLaws, rawSchema, withLaws } from "./helpers.js";
 describe("laws.json loading", () => {
   it("accepts the repository's laws.json", () => {
     const l = parseLaws(rawLaws, rawSchema);
-    expect(l.laws.version).toBe(6);
+    expect(l.laws.version).toBe(7);
     expect(l.hash).toHaveLength(64);
   });
   const refused = (name: string, mutate: Parameters<typeof withLaws>[0], expectText: string) =>
@@ -28,4 +28,6 @@ describe("laws.json loading", () => {
   refused("a 50% per-account cap", (l) => { l.weight.per_account_cap_percent = 50; }, "per_account_cap");
   refused("author voting", (l) => { (l.vote as { author_may_vote: boolean }).author_may_vote = true; }, "author_may_vote");
   refused("laws window shorter than world", (l) => { l.vote.laws.window_hours = 48; }, "easier");
+  refused("a free size charge", (l) => { l.fee.size_per_kb_usdc = 0; }, "size component");
+  refused("a 1 MB size-free allowance", (l) => { l.fee.size_free_kb = 1024; }, "allowance");
 });

@@ -90,6 +90,8 @@ export interface Laws {
     hold_timeout_days: number;
     floor_rejection_bar_days: number;
     max_unpaid_screens_per_account_per_day: number;
+    max_unpaid_screen_kb_per_account_per_day: number;
+    max_unpaid_screen_kb_per_day: number;
   };
   determinism: Record<string, string | number>;
   notices: { mention_cap_per_merge: number; doorbell_retries: number; doorbell_retire_after_failures: number; digest_every_days: number; watch_poll_every_hours: number };
@@ -124,6 +126,8 @@ export function article9AProblems(l: Laws): string[] {
   if (l.fee.expiry_hold_days > ARTICLE_9A.maxExpiryHoldDays) p.push("expiry hold above 365 days");
   if (a.effect_delay_days < ARTICLE_9A.minLawsEffectDelayDays) p.push("laws effect delay below 7 days");
   if (usdcToMicro(l.fee.floor_usdc) < MIN_BASE_FEE_MICRO) p.push("fee floor below 1 USDC");
+  if (l.fee.size_per_kb_usdc < ARTICLE_9A.minSizePerKbUsdc) p.push("size component below 0.01 USDC per kilobyte");
+  if (l.fee.size_free_kb > ARTICLE_9A.maxSizeFreeKb) p.push("size-free allowance above 64 kilobytes");
   return p;
 }
 
@@ -154,6 +158,8 @@ export function parseLaws(rawLaws: string, rawSchema: string): LoadedLaws {
   const laws = data as Laws;
   if (!laws.notices) laws.notices = { ...NOTICE_DEFAULTS };
   if (laws.screening.max_unpaid_screens_per_account_per_day === undefined) laws.screening.max_unpaid_screens_per_account_per_day = 5;
+  if (laws.screening.max_unpaid_screen_kb_per_account_per_day === undefined) laws.screening.max_unpaid_screen_kb_per_account_per_day = 4096;
+  if (laws.screening.max_unpaid_screen_kb_per_day === undefined) laws.screening.max_unpaid_screen_kb_per_day = 32768;
   return { laws, hash: sha256Hex(rawLaws), raw: rawLaws };
 }
 

@@ -91,6 +91,8 @@ export class FakeGitHub implements GitHubPort {
   async publishLedger(files: Array<{ path: string; content: string }>): Promise<void> { this.published = files; }
   async listIssueComments(issue: number): Promise<IssueComment[]> { return this.issueComments[issue] ?? []; }
   async listWatchers(): Promise<Array<{ id: number; login: string }>> { return this.watchers; }
+  stars = 0;
+  async starCount(): Promise<number> { return this.stars; }
   async postDiscussion(title: string, body: string): Promise<string> {
     if (!this.discussionsEnabled) throw new Error("discussions are not enabled");
     this.discussions.push({ title, body }); return `https://sim/discussions/${this.discussions.length}`;
