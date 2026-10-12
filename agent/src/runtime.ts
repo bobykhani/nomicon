@@ -111,7 +111,14 @@ export class Runtime {
       return;
     }
     const quoted = BigInt(String(p.quote["fee_micro"]));
-    const info = await this.d.chain.transactionInfo(n.tx);
+    // The facilitator can answer before a public node has seen the block, so look again for a few seconds
+    // rather than record a payment without the block whose timestamp Law 5 judges arrival by.
+    let info = await this.d.chain.transactionInfo(n.tx);
+    for (let i = 0; !info && i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      info = await this.d.chain.transactionInfo(n.tx);
+    }
+    if (!info) this.log(`pr ${n.pr}: transaction ${n.tx} not visible on chain yet; arrival taken as the agent's clock`);
     const arrival = info?.blockTime ?? now;
     const matched = n.amountMicro >= quoted && arrival <= Number(p.quote["expires"]);
     const cad = await this.d.oracle.usdcToCad();
