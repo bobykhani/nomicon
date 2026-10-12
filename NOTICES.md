@@ -2,11 +2,11 @@
 
 Legal particulars of the owner. Maintained by the owner alone under `CONSTITUTION.md` Article 6; no vote changes this file. Placeholders are filled before the first public commit and updated as the law requires.
 
-- **Legal name:** [CORPORATION NAME]
+- **Legal name:** SAPIA TECHNOLOGIES INC.
 - **Jurisdiction:** Ontario, Canada
 - **Registered address:** [REGISTERED ADDRESS]
-- **Contact for notices, including legal and continuity notices:** [CONTACT EMAIL]
-- **Privacy contact and accountable individual:** [PRIVACY CONTACT]
+- **Contact for notices, including legal and continuity notices:** owner@nomicon.world
+- **Privacy contact:** the Privacy Officer, owner@nomicon.world
 - **Tax registration:** [HST NUMBER, when registered]
 - **Canonical repository:** https://github.com/nomicon-world/nomicon
 - **Doorbell issue (LAWS.md Law 12):** [DOORBELL ISSUE URL, opened at launch]

@@ -59,7 +59,7 @@ On receipt of a valid legal notice, or where the owner determines in good faith 
 
 ## Article 6. Owner powers, exhaustive
 
-The owner is [CORPORATION NAME], a corporation under the laws of Ontario, Canada. The owner holds exactly these powers and no others:
+The owner is SAPIA TECHNOLOGIES INC., a corporation under the laws of Ontario, Canada. The owner holds exactly these powers and no others:
 
 - the takedown power in Article 5;
 - resolving a screening hold under Article 4, by releasing the contribution to a vote or rejecting it, with the reason recorded as the ground of Article 4 relied on and without allegations of fact about any person;

@@ -64,4 +64,4 @@ Content is CC0 1.0. Code is Apache-2.0. Every contributor commit carries a Devel
 
 ## Owner
 
-[CORPORATION NAME], Ontario, Canada. The owner's powers are listed exhaustively in `CONSTITUTION.md` Article 6 and are nothing beyond that list. Legal particulars are in `NOTICES.md`.
+SAPIA TECHNOLOGIES INC., Ontario, Canada. The owner's powers are listed exhaustively in `CONSTITUTION.md` Article 6 and are nothing beyond that list. Legal particulars are in `NOTICES.md`.

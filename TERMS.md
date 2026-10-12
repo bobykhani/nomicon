@@ -2,23 +2,23 @@
 
 **Draft for legal review. Not yet in force.** Placeholders in square brackets are filled before the first public commit. The owner's legal name, registered address, tax registration and contacts are in `NOTICES.md`; the privacy statement is in `PRIVACY.md`.
 
-These terms are between you, the person or legal entity operating the account that submits a contribution, and [CORPORATION NAME] ("the owner"), a corporation under the laws of Ontario, Canada. Submitting a contribution to Nomicon is acceptance of these terms. Paying a quoted fee is acceptance of the version of these terms at the commit the quote cites. If an automated agent submits on your behalf, you are the party to these terms.
+These terms are between you, the person or legal entity operating the account that submits a contribution, and SAPIA TECHNOLOGIES INC. ("the owner"), a corporation under the laws of Ontario, Canada. Submitting a contribution to Nomicon is acceptance of these terms. Paying a quoted fee is acceptance of the version of these terms at the commit the quote cites. If an automated agent submits on your behalf, you are the party to these terms.
 
 ## 1. What you are buying
 
 The fee is a payment for the publication service: screening, a vote window, and, if the vote passes, a merge. The fee buys the process. It does not buy a merge. Your vote may wait in a queue before it opens; the quote states how many paid contributions wait ahead of yours, and if your window has not opened within 21 days of payment you may withdraw by closing the pull request, with the fee held as on expiry. Before quoting, the agent may require you to review other open contributions (`LAWS.md` Law 13) and may decline to quote while the queue is long (Law 5).
 
-A rejected contribution earns no refund. If your contribution expires (no quorum, equal weight, a conflict at close, or no owner decision during bootstrap), the fee is held as a credit for one further submission at the same layer for at least 90 days, then forfeited; the credit is not money and cannot be paid out. An outcome the ledger later records as erroneous is treated as expiry. Pay only through the endpoint in the quote; USDC sent to the fee address any other way is not a fee, is matched to no quote, and is not returned. Nothing here excludes a cancellation right that the consumer protection law of your place of residence does not allow to be excluded.
+A rejected contribution earns no refund. If your contribution expires (no quorum, equal weight, a conflict at close, or no owner decision during bootstrap), the fee is held as a credit for one further submission at the same layer for at least 90 days, then forfeited; the credit is not money and cannot be paid out. An outcome the ledger later records as erroneous is treated as expiry. Pay only through the endpoint in the quote; USDC sent to the fee address any other way is not a fee, is matched to no quote, and is not returned. Nothing here excludes a cancellation right that the consumer protection law of your place of residence does not allow to be excluded. The owner's name, address and contact are in `NOTICES.md`; the quote comment and the ledger entry recording your payment are your written copy of this agreement.
 
 Quoted fees include all applicable taxes. Where the owner is registered for GST/HST, the fee includes tax at the rate for the owner's province unless you have given the owner evidence that you are outside Canada; the tax included is shown on the quote.
 
 ## 2. What you grant
 
-By submitting, you irrevocably license your contribution as `CONSTITUTION.md` Article 10 states: CC0 1.0 for non-code content, Apache-2.0 for code. You certify the Developer Certificate of Origin in `DCO.md` for every commit. You confirm you have the right to make these grants and that your contribution does not incorporate third-party material under a licence requiring attribution or share-alike.
+By submitting, you irrevocably license your contribution as `CONSTITUTION.md` Article 10 states: CC0 1.0 for non-code content, Apache-2.0 for code. You certify the Developer Certificate of Origin in `DCO.md` for every commit. You confirm you have the right to make these grants and that your contribution does not incorporate third-party material under a licence requiring attribution or share-alike. To the extent the law allows, you waive, and agree not to assert, your moral rights in your contribution against the owner, other contributors and anyone using the repository under its licences.
 
 ## 3. What you are responsible for
 
-You are responsible for everything in your contribution, including that it meets the legal floor in `CONSTITUTION.md` Article 4. If a third party makes a claim about your contribution, you are the responsible party, and you indemnify the owner against that claim to the extent the law allows. You confirm you are not, and are not acting for, a person subject to Canadian or United States sanctions.
+You are responsible for everything in your contribution, including that it meets the legal floor in `CONSTITUTION.md` Article 4. If a third party makes a claim against the owner arising from your breach of section 2 or of this section, you indemnify the owner against that claim, to the extent the law allows; the owner will tell you of the claim promptly and let you take part in its defence. This indemnity does not apply where the consumer protection law of your place of residence does not allow it. You confirm you are not, and are not acting for, a person subject to Canadian or United States sanctions.
 
 ## 4. What nobody vouches for
 
@@ -54,10 +54,18 @@ You confirm you have reached the age of majority where you live, or that your pa
 
 To the extent the law allows: the owner is not liable for indirect, incidental, consequential, special or punitive damages, or for lost profits, data or goodwill; the owner's total liability for all claims arising from these terms or from Nomicon is limited to the greater of the fees you paid in the twelve months before the claim arose and one hundred Canadian dollars; and nothing in these terms excludes a right or warranty that applicable consumer-protection law in your place of residence does not allow to be excluded.
 
-## 12. Severability
+## 12. Events outside the owner's control
+
+The owner is not responsible for delay or failure caused by events outside its reasonable control, including outages of the hosting platform, the fee network, the payment facilitator or the screening provider. The Laws' rules on recorded outages apply to quotes and windows affected by them.
+
+## 13. Assignment
+
+The owner may assign these terms to an operator elected under `CONSTITUTION.md` Article 14, or to a successor in a sale or reorganisation of its business. You may not assign them.
+
+## 14. Severability
 
 If any part of these terms is unenforceable, the rest stands.
 
-## 13. Contact
+## 15. Contact
 
 See `NOTICES.md`.
