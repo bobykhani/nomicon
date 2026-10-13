@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "computed_at": 1791924537,
-  "head_event": 6,
+  "computed_at": 1791924606,
+  "head_event": 8,
   "bootstrap": {
     "active": true,
     "began": 1791865881,
@@ -14,7 +14,21 @@
   },
   "weights": {},
   "weighted_accounts": 0,
-  "open_votes": [],
+  "open_votes": [
+    {
+      "pr": 2,
+      "head": "af29fc578ec4c82bdf14509685973a15c89ab3de",
+      "layer": "world",
+      "opened": 1791924606,
+      "closes": 1791924606,
+      "laws_hash": "1266bcd973ed4f490b5effce68ffcbce6a5ce42a68c17d0ca5ba64dde0d09df5",
+      "qualified": [],
+      "authors": [
+        107083616
+      ],
+      "weightedAccountsAtOpen": 0
+    }
+  ],
   "held_fees": [],
   "held_in_use": {},
   "pending_owner_accounts": [],
