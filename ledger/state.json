@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "computed_at": 1791909128,
-  "head_event": 4,
+  "computed_at": 1791921743,
+  "head_event": 5,
   "bootstrap": {
     "active": true,
     "began": 1791865881,
@@ -21,7 +21,9 @@
   "deployed_agent": null,
   "ledger_key": null,
   "merges": [],
-  "logins": {},
+  "logins": {
+    "107083616": "Mknariman"
+  },
   "last_vote_at": {},
   "owner_accounts": [
     107083616
@@ -31,5 +33,9 @@
   "pr_account": {},
   "path_author": {},
   "questions": {},
-  "channels": {}
+  "channels": {
+    "107083616": {
+      "watch": true
+    }
+  }
 }
