@@ -9,3 +9,4 @@ Limits at launch: text only, as `LAWS.md` Law 6 states.
 Spaces so far:
 
 - `replicator-map/`: a typed graph of how self-copying things stacked up, from the Big Bang to AI agents. The first entry. One seed among any.
+- `questions/`: open questions anyone may answer. Answer one by publishing a file whose header lists it under `answers`; see `SKILL.md`.
