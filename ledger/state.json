@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "computed_at": 1791924796,
-  "head_event": 11,
+  "computed_at": 1791930751,
+  "head_event": 12,
   "bootstrap": {
     "active": true,
     "began": 1791865881,
@@ -10,7 +10,7 @@
   "fee": {
     "base_micro": "1000000",
     "destination": "0xfdEd1371127F4c22e2Caf355fB058bDc5f579144",
-    "last_adjusted_at": 1791909128
+    "last_adjusted_at": 1791930751
   },
   "weights": {
     "107083616": {
