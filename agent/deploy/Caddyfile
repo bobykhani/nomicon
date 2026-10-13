@@ -2,7 +2,9 @@
 # X-Forwarded-For, which the agent trusts because NOMICON_TRUST_PROXY=1.
 {$NOMICON_DOMAIN} {
 	encode gzip
-	request_body { max_size 64KB }
+	request_body {
+		max_size 64KB
+	}
 	reverse_proxy agent:8402 {
 		header_up X-Forwarded-For {remote_host}
 	}
@@ -11,5 +13,7 @@
 		X-Content-Type-Options nosniff
 		-Server
 	}
-	log { output stderr }
+	log {
+		output stderr
+	}
 }

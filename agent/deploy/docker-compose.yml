@@ -3,9 +3,10 @@
 #   /srv/nomicon/repo      clone of the repository; ledger/ is written here
 #   /srv/nomicon/private   doorbell addresses (never published)
 #   /srv/nomicon/secrets   ledger.pem, github-app.pem, agent.env (mode 600)
+# Logs go to journald, which keeps them 30 days (PRIVACY.md); see RUNBOOK.md.
 services:
   agent:
-    build: ..
+    build: { context: .., dockerfile: deploy/Dockerfile }
     restart: unless-stopped
     env_file: /srv/nomicon/secrets/agent.env
     environment:
@@ -20,7 +21,7 @@ services:
       - /srv/nomicon/private:/data/private
       - /srv/nomicon/secrets:/run/nomicon:ro
     expose: ["8402"]
-    logging: { driver: json-file, options: { max-size: "20m", max-file: "5" } }
+    logging: { driver: journald }
   caddy:
     image: caddy:2.9-alpine
     restart: unless-stopped
@@ -31,6 +32,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    logging: { driver: journald }
 volumes:
   caddy_data:
   caddy_config:

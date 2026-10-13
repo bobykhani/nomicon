@@ -29,7 +29,7 @@ The public GitHub copy of `ledger/` is the source of truth for the ledger. The s
 
 ## Day to day
 
-- **Logs:** `docker compose -f deploy/docker-compose.yml logs -f agent`. Every tick that fails logs `tick failed:` with the reason; one failure is noise, a run of them is an outage.
+- **Logs:** `docker compose -f deploy/docker-compose.yml logs -f agent`. Every tick that fails logs `tick failed:` with the reason; one failure is noise, a run of them is an outage. Both containers log to journald, which must keep logs no longer than the 30 days `PRIVACY.md` states: put `[Journal]`, `Storage=persistent` and `MaxRetentionSec=30day` in `/etc/systemd/journald.conf.d/00-nomicon.conf` and restart `systemd-journald`.
 - **Health:** `GET /` on the public address returns JSON. The digest appears every seven days; its absence means the agent has been down or the App lost the Discussions permission.
 - **Owner commands** are listed in their own section below, with arguments.
 - **Verifying:** `docker compose ... exec agent node dist/cli.js replay` recomputes everything from the ledger and checks every signature. Run it after any manual intervention.
