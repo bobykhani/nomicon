@@ -5,12 +5,15 @@
 #   /srv/nomicon/secrets   ledger.pem, github-app.pem, agent.env (mode 600)
 #   /srv/nomicon/sites     optional extra Caddy site blocks (*.caddy), owner-maintained
 #   /srv/nomicon/www       files those sites serve, such as the contact page; never in the repository
+# NOMICON_HOME (default /srv/nomicon) moves repo/, private/ and secrets/ elsewhere, for a second
+# instance such as a test network run; give it its own COMPOSE_PROJECT_NAME in deploy/.env.
+# sites/ and www/ are the owner's pages and stay at /srv/nomicon whichever instance serves them.
 # Logs go to journald, which keeps them 30 days (PRIVACY.md); see RUNBOOK.md.
 services:
   agent:
     build: { context: .., dockerfile: deploy/Dockerfile }
     restart: unless-stopped
-    env_file: /srv/nomicon/secrets/agent.env
+    env_file: ${NOMICON_HOME:-/srv/nomicon}/secrets/agent.env
     environment:
       NOMICON_REPO_ROOT: /data/repo
       NOMICON_DATA_DIR: /data/private
@@ -19,9 +22,9 @@ services:
       NOMICON_TRUST_PROXY: "1"
       NOMICON_PORT: "8402"
     volumes:
-      - /srv/nomicon/repo:/data/repo
-      - /srv/nomicon/private:/data/private
-      - /srv/nomicon/secrets:/run/nomicon:ro
+      - ${NOMICON_HOME:-/srv/nomicon}/repo:/data/repo
+      - ${NOMICON_HOME:-/srv/nomicon}/private:/data/private
+      - ${NOMICON_HOME:-/srv/nomicon}/secrets:/run/nomicon:ro
     expose: ["8402"]
     logging: { driver: journald }
   caddy:

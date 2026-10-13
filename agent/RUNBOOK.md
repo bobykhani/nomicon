@@ -10,7 +10,7 @@ One small server runs two processes: the agent (Node, `node dist/cli.js run`) an
 |---|---|---|
 | `/srv/nomicon/repo` | a clone of the repository; the agent writes `ledger/events/` and `ledger/head.json` here and publishes them to GitHub every tick | yes |
 | `/srv/nomicon/private` | `doorbells.json`, the registered doorbell addresses and the delivery cursor | yes |
-| `/srv/nomicon/secrets` | `ledger.pem` (ledger signing key), `github-app.pem` (App key), `agent.env` (all other secrets), mode 600, owner root | yes, encrypted, off the box |
+| `/srv/nomicon/secrets` | `ledger.pem` (ledger signing key), `github-app.pem` (App key), `agent.env` (all other secrets), mode 600, owned by uid 1000, the user the agent container runs as | yes, encrypted, off the box |
 
 The public GitHub copy of `ledger/` is the source of truth for the ledger. The server copy is a working copy. Doorbell addresses and the two keys exist nowhere else, which is why they are backed up.
 
