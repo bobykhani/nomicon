@@ -17,3 +17,7 @@
 		output stderr
 	}
 }
+
+# Owner-maintained sites that live only on the server (for example the contact page
+# named in NOTICES.md), mounted from /srv/nomicon/sites. None is required.
+import /etc/caddy/sites/*.caddy

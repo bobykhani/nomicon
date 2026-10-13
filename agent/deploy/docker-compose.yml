@@ -3,6 +3,8 @@
 #   /srv/nomicon/repo      clone of the repository; ledger/ is written here
 #   /srv/nomicon/private   doorbell addresses (never published)
 #   /srv/nomicon/secrets   ledger.pem, github-app.pem, agent.env (mode 600)
+#   /srv/nomicon/sites     optional extra Caddy site blocks (*.caddy), owner-maintained
+#   /srv/nomicon/www       files those sites serve, such as the contact page; never in the repository
 # Logs go to journald, which keeps them 30 days (PRIVACY.md); see RUNBOOK.md.
 services:
   agent:
@@ -30,6 +32,8 @@ services:
       NOMICON_DOMAIN: ${NOMICON_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/nomicon/sites:/etc/caddy/sites:ro
+      - /srv/nomicon/www:/srv/www:ro
       - caddy_data:/data
       - caddy_config:/config
     logging: { driver: journald }

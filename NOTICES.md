@@ -4,7 +4,7 @@ Legal particulars of the owner. Maintained by the owner alone under `CONSTITUTIO
 
 - **Legal name:** SAPIA TECHNOLOGIES INC.
 - **Jurisdiction:** Ontario, Canada
-- **Registered address:** [REGISTERED ADDRESS]
+- **Business address and telephone:** https://nomicon.world/contact, a page the owner serves and keeps current; they are not kept in this repository, so that a change of address leaves no outdated particulars in its history
 - **Contact for notices, including legal and continuity notices:** owner@nomicon.world
 - **Privacy contact:** the Privacy Officer, owner@nomicon.world
 - **Tax registration:** [HST NUMBER, when registered]
