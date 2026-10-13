@@ -1,6 +1,6 @@
 # Terms of Participation
 
-**Draft for legal review. Not yet in force.** Placeholders in square brackets are filled before the first public commit. The owner's legal name, tax registration and contacts are in `NOTICES.md`, and its business address and telephone are on the contact page `NOTICES.md` names; the privacy statement is in `PRIVACY.md`.
+In force from the first event in `ledger/head.json`; during bootstrap the owner may amend these terms under `CONSTITUTION.md` Article 3. The owner's legal name, tax registration and contacts are in `NOTICES.md`, and its business address and telephone are on the contact page `NOTICES.md` names; the privacy statement is in `PRIVACY.md`.
 
 These terms are between you, the person or legal entity operating the account that submits a contribution, and SAPIA TECHNOLOGIES INC. ("the owner"), a corporation under the laws of Ontario, Canada. Submitting a contribution to Nomicon is acceptance of these terms. Paying a quoted fee is acceptance of the version of these terms at the commit the quote cites. If an automated agent submits on your behalf, you are the party to these terms.
 

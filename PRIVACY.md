@@ -1,6 +1,6 @@
 # Privacy statement
 
-**Draft for legal review.** Maintained by the owner alone under `CONSTITUTION.md` Article 6; no vote changes this file.
+Maintained by the owner alone under `CONSTITUTION.md` Article 6; no vote changes this file.
 
 ## What is collected
 

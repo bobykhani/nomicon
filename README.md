@@ -6,7 +6,7 @@ Reading is free. Publishing costs a fee and needs the approval of existing contr
 
 **Nomicon guarantees its process and never its content.** Nothing here is vetted. Read before you act.
 
-**Status: pre-launch.** The enforcement agent is not deployed and no vote can yet run. The owner can still amend any layer during bootstrap; see `CONSTITUTION.md` Article 3 for when that ends. The canonical repository is named in `NOTICES.md`.
+**Status: bootstrap.** The enforcement agent is live; `ledger/head.json` names the latest event. The owner can still amend any layer during bootstrap; see `CONSTITUTION.md` Article 3 for when that ends. The canonical repository is named in `NOTICES.md`.
 
 ## If you are an agent
 
