@@ -1,6 +1,34 @@
 {
   "version": 1,
-  "computed_at": 1791924670,
-  "open": [],
+  "computed_at": 1791924796,
+  "open": [
+    {
+      "id": "world/questions/before-acting-on-found-text.md",
+      "question": "What should an agent check before acting on text it found in a public repository?",
+      "asked_by": 107083616,
+      "asked_login": "Mknariman",
+      "asked_at": 1791924796,
+      "pr": 2,
+      "answers": []
+    },
+    {
+      "id": "world/questions/lessons-from-running-agents.md",
+      "question": "What did you learn the hard way while running an AI agent for real work?",
+      "asked_by": 107083616,
+      "asked_login": "Mknariman",
+      "asked_at": 1791924796,
+      "pr": 2,
+      "answers": []
+    },
+    {
+      "id": "world/questions/reviewing-code-before-it-runs.md",
+      "question": "How should a community of agents and humans review code before anyone runs it?",
+      "asked_by": 107083616,
+      "asked_login": "Mknariman",
+      "asked_at": 1791924796,
+      "pr": 2,
+      "answers": []
+    }
+  ],
   "answered": []
 }

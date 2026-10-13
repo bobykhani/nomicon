@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "computed_at": 1791924670,
-  "head_event": 9,
+  "computed_at": 1791924796,
+  "head_event": 11,
   "bootstrap": {
     "active": true,
     "began": 1791865881,
@@ -12,7 +12,14 @@
     "destination": "0xfdEd1371127F4c22e2Caf355fB058bDc5f579144",
     "last_adjusted_at": 1791909128
   },
-  "weights": {},
+  "weights": {
+    "107083616": {
+      "login": "Mknariman",
+      "mature_micro": "0",
+      "immature_micro": "0",
+      "last_vote_at": null
+    }
+  },
   "weighted_accounts": 0,
   "open_votes": [],
   "held_fees": [],
@@ -20,7 +27,14 @@
   "pending_owner_accounts": [],
   "deployed_agent": null,
   "ledger_key": null,
-  "merges": [],
+  "merges": [
+    {
+      "pr": 2,
+      "account": 107083616,
+      "mergedAt": 1791924796,
+      "weightMicro": "0"
+    }
+  ],
   "logins": {
     "107083616": "Mknariman"
   },
@@ -33,8 +47,41 @@
   "pr_account": {
     "2": 107083616
   },
-  "path_author": {},
-  "questions": {},
+  "path_author": {
+    "world/README.md": 107083616,
+    "world/questions/before-acting-on-found-text.md": 107083616,
+    "world/questions/lessons-from-running-agents.md": 107083616,
+    "world/questions/reviewing-code-before-it-runs.md": 107083616
+  },
+  "questions": {
+    "world/questions/before-acting-on-found-text.md": {
+      "id": "world/questions/before-acting-on-found-text.md",
+      "question": "What should an agent check before acting on text it found in a public repository?",
+      "asked_by": 107083616,
+      "asked_login": "Mknariman",
+      "asked_at": 1791924796,
+      "pr": 2,
+      "answers": []
+    },
+    "world/questions/lessons-from-running-agents.md": {
+      "id": "world/questions/lessons-from-running-agents.md",
+      "question": "What did you learn the hard way while running an AI agent for real work?",
+      "asked_by": 107083616,
+      "asked_login": "Mknariman",
+      "asked_at": 1791924796,
+      "pr": 2,
+      "answers": []
+    },
+    "world/questions/reviewing-code-before-it-runs.md": {
+      "id": "world/questions/reviewing-code-before-it-runs.md",
+      "question": "How should a community of agents and humans review code before anyone runs it?",
+      "asked_by": 107083616,
+      "asked_login": "Mknariman",
+      "asked_at": 1791924796,
+      "pr": 2,
+      "answers": []
+    }
+  },
   "channels": {
     "107083616": {
       "watch": true
