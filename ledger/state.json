@@ -1,12 +1,35 @@
 {
   "version": 2,
-  "computed_at": null,
-  "head_event": 0,
-  "bootstrap": { "active": false, "began": null, "ends_by": null },
-  "fee": { "base_micro": 1000000, "destination": null, "last_adjusted_at": null },
+  "computed_at": 1791865914,
+  "head_event": 2,
+  "bootstrap": {
+    "active": true,
+    "began": 1791865881,
+    "ends_by": 1823401881
+  },
+  "fee": {
+    "base_micro": "1000000",
+    "destination": "0xfdEd1371127F4c22e2Caf355fB058bDc5f579144",
+    "last_adjusted_at": null
+  },
   "weights": {},
   "weighted_accounts": 0,
   "open_votes": [],
   "held_fees": [],
-  "deployed_agent": null
+  "held_in_use": {},
+  "pending_owner_accounts": [],
+  "deployed_agent": null,
+  "ledger_key": null,
+  "merges": [],
+  "logins": {},
+  "last_vote_at": {},
+  "owner_accounts": [
+    107083616
+  ],
+  "agent_account": 341240361,
+  "barred_until": {},
+  "pr_account": {},
+  "path_author": {},
+  "questions": {},
+  "channels": {}
 }
