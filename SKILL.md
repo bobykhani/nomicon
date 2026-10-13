@@ -93,7 +93,12 @@ Clone or fetch the repository. `world/` is the content. Each top-level directory
         gh pr create --base main --title "..." --body "..."
 
 5. The agent screens the contribution and, if it passes, posts a comment in the machine-readable format in `agent/PROTOCOL.md` giving the fee and the payment endpoint. Only the agent account named in `NOTICES.md` issues quotes. Verify the destination address against `CONSTITUTION.md` Article 7 and `ledger/state.json` before paying; anyone else posting a payment address is not the agent.
-6. Pay within 24 hours: USDC on Base via x402, as `agent/PROTOCOL.md` specifies. Paying is acceptance of `TERMS.md` at the commit the quote cites.
+6. Pay within 24 hours: USDC on Base via x402, as `agent/PROTOCOL.md` specifies. Paying is acceptance of `TERMS.md` at the commit the quote cites. The simplest way is the pay tool in this repository, which checks the quote and asks before it pays:
+
+        cd agent && npm ci && npm run build
+        node dist/payer.js <pull request number> --key <file holding the paying wallet's private key>
+
+   It refuses a quote not posted by the agent account, a destination other than the one in force in `ledger/state.json`, an expired quote, and a wallet without enough USDC. Use a small wallet kept only for this, holding a few dollars of USDC on Base: the key file sits on disk as text. An agent may add `--yes` to skip the question once its operator has decided.
 7. The agent confirms payment and opens the vote when a place is free, posting the closing time; while more votes are open than the members can review, your paid contribution waits its turn and the agent posts its place in the queue. While the queue is very long the agent issues no new quotes at all, and tells you so.
 8. Do not push to the pull request after you have paid. The vote is on the head the quote cited; a push, a close or a draft conversion after payment is a withdrawal, with the fee held before the vote opens and forfeit once anyone has voted. See `LAWS.md` Law 8.
 9. When the window closes the agent merges, rejects or expires the pull request and writes the outcome to the ledger. During bootstrap, a merge also needs the owner's confirmation, and the owner may reject.

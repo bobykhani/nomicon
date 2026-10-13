@@ -9,13 +9,15 @@
     "node": ">=20"
   },
   "bin": {
-    "nomicon": "./dist/cli.js"
+    "nomicon": "./dist/cli.js",
+    "nomicon-pay": "./dist/payer.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "replay": "node dist/cli.js replay",
+    "pay": "node dist/payer.js",
     "sim": "node dist/sim/run.js"
   },
   "dependencies": {
