@@ -76,7 +76,7 @@ The owner has no vote weight. The owner may publish like any contributor, paying
 
 ## Article 7. Fees
 
-Every fee is a payment to the owner for the publication service. The initial fee destination is the address `[WALLET ADDRESS]` on Base (`eip155:8453`), in USDC. The owner may change the destination only by a command recorded in the ledger from a listed owner account, and the agent quotes only the destination in force when it quotes. Quoted fees include all applicable taxes.
+Every fee is a payment to the owner for the publication service. The initial fee destination is the address `0xfdEd1371127F4c22e2Caf355fB058bDc5f579144` on Base (`eip155:8453`), in USDC. The owner may change the destination only by a command recorded in the ledger from a listed owner account, and the agent quotes only the destination in force when it quotes. Quoted fees include all applicable taxes.
 
 Fees are never refunded on rejection. On expiry they are held under the Laws. Fees are never redistributed to participants.
 
